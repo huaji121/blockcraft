@@ -1,0 +1,9 @@
+export const CHUNK_SIZE = 16;
+export const RENDER_DISTANCE = 4;
+export const BLOCK_SIZE = 1;
+export const GRAVITY = 25;
+export const JUMP_SPEED = 9;
+export const PLAYER_SPEED = 5;
+export const PLAYER_HEIGHT = 1.8;
+export const PLAYER_WIDTH = 0.6;
+export const MOUSE_SENSITIVITY = 0.002;
