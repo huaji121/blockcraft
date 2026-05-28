@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Chunk } from './chunk';
 import { TerrainNoise } from './noise';
 import { BlockType, BLOCK_DATA, ALL_BLOCKS } from './blocks';
-import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y } from './constants';
+import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, CHUNKS_PER_FRAME } from './constants';
 
 export class World {
   private chunks: Map<string, Chunk> = new Map();
@@ -131,7 +131,9 @@ export class World {
     const pcy = Math.floor(playerY / CHUNK_SIZE);
     const pcz = Math.floor(playerZ / CHUNK_SIZE);
 
+    // Collect needed chunk keys and find missing ones
     const neededChunks = new Set<string>();
+    const missingChunks: { cx: number; cy: number; cz: number; dist: number }[] = [];
 
     for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
       for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
@@ -143,16 +145,28 @@ export class World {
           neededChunks.add(key);
 
           if (!this.chunks.has(key)) {
-            const chunk = this.generateChunk(cx, cy, cz);
-            this.chunks.set(key, chunk);
-            this.rebuildChunk(chunk);
-          } else {
-            const chunk = this.chunks.get(key)!;
-            if (chunk.dirty) {
-              this.rebuildChunk(chunk);
-            }
+            const dist = dx * dx + dy * dy + dz * dz;
+            missingChunks.push({ cx, cy, cz, dist });
           }
         }
+      }
+    }
+
+    // Sort by distance (closest first), then generate at most N per frame
+    missingChunks.sort((a, b) => a.dist - b.dist);
+    const toGenerate = missingChunks.slice(0, CHUNKS_PER_FRAME);
+
+    for (const { cx, cy, cz } of toGenerate) {
+      const chunk = this.generateChunk(cx, cy, cz);
+      const key = this.chunkKey(cx, cy, cz);
+      this.chunks.set(key, chunk);
+      this.rebuildChunk(chunk);
+    }
+
+    // Rebuild dirty chunks
+    for (const chunk of this.chunks.values()) {
+      if (chunk.dirty) {
+        this.rebuildChunk(chunk);
       }
     }
 
