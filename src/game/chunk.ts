@@ -5,12 +5,14 @@ import { BlockType, BLOCK_DATA } from './blocks';
 export class Chunk {
   public blocks: Uint8Array;
   public cx: number;
+  public cy: number;
   public cz: number;
   public meshes: THREE.Mesh[] = [];
   public dirty: boolean = true;
 
-  constructor(cx: number, cz: number) {
+  constructor(cx: number, cy: number, cz: number) {
     this.cx = cx;
+    this.cy = cy;
     this.cz = cz;
     this.blocks = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE);
   }
@@ -32,36 +34,45 @@ export class Chunk {
     this.dirty = true;
   }
 
-  /** Get the texture path for a specific face of a block */
   private getTextureForFace(block: BlockType, faceDir: [number, number, number]): string {
     if (block === BlockType.GRASS) {
-      if (faceDir[1] === 1) return BLOCK_DATA[BlockType.GRASS].texture;   // top: grass_block_top
-      if (faceDir[1] === -1) return BLOCK_DATA[BlockType.DIRT].texture;    // bottom: dirt
-      return BLOCK_DATA[BlockType.DIRT].texture;                           // sides: dirt (grass_side has alpha issues)
+      if (faceDir[1] === 1) return BLOCK_DATA[BlockType.GRASS].texture;
+      if (faceDir[1] === -1) return BLOCK_DATA[BlockType.DIRT].texture;
+      return '/assets/textures/block/grass_block_side.png';
     }
     return BLOCK_DATA[block].texture;
   }
 
-  /** Build meshes grouped by texture for efficient rendering */
+  private shouldRenderFace(block: BlockType, neighbor: BlockType): boolean {
+    if (neighbor === BlockType.AIR) return true;
+    const blockData = BLOCK_DATA[block];
+    const neighborData = BLOCK_DATA[neighbor];
+    if (blockData.transparent) {
+      return block !== neighbor;
+    }
+    return neighborData.transparent;
+  }
+
   buildMeshes(
     textureAtlas: Map<string, THREE.Texture>,
     getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType
   ): void {
     this.disposeMeshes();
 
-    // Group faces by texture
-    const facesByTex = new Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>();
+    const opaqueByTex = new Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>();
+    const transparentByTex = new Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>();
 
     const worldX0 = this.cx * CHUNK_SIZE;
+    const worldY0 = this.cy * CHUNK_SIZE;
     const worldZ0 = this.cz * CHUNK_SIZE;
 
     const faceDefs = [
-      { dir: [0, 1, 0] as [number, number, number], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] as number[][] },
-      { dir: [0, -1, 0] as [number, number, number], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] as number[][] },
-      { dir: [1, 0, 0] as [number, number, number], corners: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] as number[][] },
-      { dir: [-1, 0, 0] as [number, number, number], corners: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] as number[][] },
-      { dir: [0, 0, 1] as [number, number, number], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] as number[][] },
-      { dir: [0, 0, -1] as [number, number, number], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] as number[][] },
+      { dir: [0, 1, 0] as [number, number, number], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
+      { dir: [0, -1, 0] as [number, number, number], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
+      { dir: [1, 0, 0] as [number, number, number], corners: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] as number[][], uvs: [0,0, 0,1, 1,1, 1,0] as number[] },
+      { dir: [-1, 0, 0] as [number, number, number], corners: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] as number[][], uvs: [0,0, 0,1, 1,1, 1,0] as number[] },
+      { dir: [0, 0, 1] as [number, number, number], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
+      { dir: [0, 0, -1] as [number, number, number], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
     ];
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
@@ -70,22 +81,26 @@ export class Chunk {
           const block = this.blocks[this.idx(x, y, z)];
           if (block === BlockType.AIR) continue;
 
+          const isTransparent = BLOCK_DATA[block].transparent;
           const wx = worldX0 + x;
+          const wy = worldY0 + y;
           const wz = worldZ0 + z;
 
           for (const face of faceDefs) {
             const nx = wx + face.dir[0];
-            const ny = y + face.dir[1];
+            const ny = wy + face.dir[1];
             const nz = wz + face.dir[2];
 
             const neighbor = getNeighborBlock(nx, ny, nz);
-            if (neighbor !== BlockType.AIR) continue;
+            if (!this.shouldRenderFace(block, neighbor)) continue;
 
             const texPath = this.getTextureForFace(block, face.dir);
-            if (!facesByTex.has(texPath)) {
-              facesByTex.set(texPath, { positions: [], normals: [], uvs: [], indices: [] });
+            const groupMap = isTransparent ? transparentByTex : opaqueByTex;
+
+            if (!groupMap.has(texPath)) {
+              groupMap.set(texPath, { positions: [], normals: [], uvs: [], indices: [] });
             }
-            const group = facesByTex.get(texPath)!;
+            const group = groupMap.get(texPath)!;
             const baseIndex = group.positions.length / 3;
 
             for (const corner of face.corners) {
@@ -96,7 +111,7 @@ export class Chunk {
               );
               group.normals.push(face.dir[0], face.dir[1], face.dir[2]);
             }
-            group.uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+            group.uvs.push(...face.uvs);
             group.indices.push(
               baseIndex, baseIndex + 1, baseIndex + 2,
               baseIndex, baseIndex + 2, baseIndex + 3
@@ -106,7 +121,17 @@ export class Chunk {
       }
     }
 
-    // Create one mesh per texture group
+    this.buildMeshGroup(opaqueByTex, textureAtlas, false, 0);
+    this.buildMeshGroup(transparentByTex, textureAtlas, true, 1);
+    this.dirty = false;
+  }
+
+  private buildMeshGroup(
+    facesByTex: Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>,
+    textureAtlas: Map<string, THREE.Texture>,
+    transparent: boolean,
+    renderOrder: number
+  ): void {
     for (const [texPath, group] of facesByTex) {
       if (group.positions.length === 0) continue;
 
@@ -123,27 +148,30 @@ export class Chunk {
         tex.generateMipmaps = false;
       }
 
-      // Grass top texture is grayscale in assets; tint it green like Minecraft
       const isGrassTop = texPath === BLOCK_DATA[BlockType.GRASS].texture;
+      const isGrassSide = texPath === '/assets/textures/block/grass_block_side.png';
       const material = new THREE.MeshLambertMaterial({
         map: tex || null,
-        side: THREE.FrontSide,
+        side: transparent ? THREE.DoubleSide : THREE.FrontSide,
         color: isGrassTop ? 0x5a8f29 : 0xffffff,
+        transparent: transparent || isGrassSide,
+        opacity: transparent ? 0.5 : 1,
+        alphaTest: isGrassSide ? 0.1 : 0,
+        depthWrite: !transparent,
+        polygonOffset: transparent,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
       });
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(
         this.cx * CHUNK_SIZE * BLOCK_SIZE,
-        0,
+        this.cy * CHUNK_SIZE * BLOCK_SIZE,
         this.cz * CHUNK_SIZE * BLOCK_SIZE
       );
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-
+      mesh.renderOrder = renderOrder;
       this.meshes.push(mesh);
     }
-
-    this.dirty = false;
   }
 
   disposeMeshes(): void {

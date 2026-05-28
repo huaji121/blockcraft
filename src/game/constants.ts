@@ -1,5 +1,6 @@
 export const CHUNK_SIZE = 16;
 export const RENDER_DISTANCE = 4;
+export const RENDER_DISTANCE_Y = 8; // vertical chunk render distance
 export const BLOCK_SIZE = 1;
 export const GRAVITY = 25;
 export const JUMP_SPEED = 9;

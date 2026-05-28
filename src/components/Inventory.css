@@ -1,0 +1,192 @@
+/* ── Inventory UI — Minecraft pixel style ── */
+
+.inv-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  font-family: 'Courier New', monospace;
+  user-select: none;
+}
+
+.inv-panel {
+  background: #c6c6c6;
+  border: 3px solid #555;
+  box-shadow:
+    inset 2px 2px 0 #fff,
+    inset -2px -2px 0 #888,
+    4px 4px 0 rgba(0,0,0,0.3);
+  padding: 8px;
+  min-width: 320px;
+}
+
+.inv-title {
+  text-align: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: #404040;
+  margin-bottom: 8px;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+/* ── Slot grid ── */
+.inv-grid {
+  display: grid;
+  gap: 2px;
+}
+
+.inv-grid-9 { grid-template-columns: repeat(9, 36px); }
+.inv-grid-8 { grid-template-columns: repeat(8, 36px); }
+.inv-grid-6 { grid-template-columns: repeat(6, 36px); }
+
+/* ── Single slot ── */
+.inv-slot {
+  width: 36px;
+  height: 36px;
+  background: #8b8b8b;
+  border: 2px solid #555;
+  box-shadow:
+    inset 1px 1px 0 #373737,
+    inset -1px -1px 0 #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+}
+
+.inv-slot:hover {
+  background: #aaa;
+}
+
+.inv-slot.selected {
+  border-color: #fff;
+  box-shadow:
+    inset 1px 1px 0 #373737,
+    inset -1px -1px 0 #fff,
+    0 0 0 1px #fff;
+}
+
+.inv-slot img {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+}
+
+/* Grass block tint — grayscale asset needs green overlay */
+.inv-slot .grass-tint {
+  filter: brightness(0.7) sepia(1) hue-rotate(50deg) saturate(4);
+}
+
+.inv-slot .count {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+
+/* ── Hotbar ── */
+.hotbar {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  z-index: 50;
+  background: rgba(0,0,0,0.25);
+  padding: 4px;
+  border-radius: 2px;
+}
+
+/* ── Backpack ── */
+.backpack-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backpack-divider {
+  height: 2px;
+  background: #888;
+  box-shadow: 0 1px 0 #fff;
+}
+
+/* ── Creative grid ── */
+.creative-grid-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.creative-grid-wrap::-webkit-scrollbar {
+  width: 10px;
+}
+
+.creative-grid-wrap::-webkit-scrollbar-track {
+  background: #8b8b8b;
+}
+
+.creative-grid-wrap::-webkit-scrollbar-thumb {
+  background: #555;
+  border: 1px solid #888;
+}
+
+/* ── Buttons ── */
+.inv-btn {
+  display: block;
+  margin: 8px auto 0;
+  padding: 4px 16px;
+  background: #8b8b8b;
+  border: 2px solid #555;
+  box-shadow:
+    inset 1px 1px 0 #fff,
+    inset -1px -1px 0 #373737;
+  color: #404040;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.inv-btn:hover {
+  background: #aaa;
+}
+
+.inv-btn:active {
+  box-shadow:
+    inset 1px 1px 0 #373737,
+    inset -1px -1px 0 #fff;
+}
+
+/* ── Held item following cursor ── */
+.held-item {
+  position: fixed;
+  pointer-events: none;
+  z-index: 200;
+  transform: translate(10px, 10px);
+}
+
+.held-item img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.held-item .count {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  font-family: 'Courier New', monospace;
+}

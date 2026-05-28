@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Chunk } from './chunk';
 import { TerrainNoise } from './noise';
-import { BlockType, BLOCK_DATA } from './blocks';
-import { CHUNK_SIZE, RENDER_DISTANCE, BLOCK_SIZE } from './constants';
+import { BlockType, BLOCK_DATA, ALL_BLOCKS } from './blocks';
+import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y } from './constants';
 
 export class World {
   private chunks: Map<string, Chunk> = new Map();
@@ -19,14 +19,10 @@ export class World {
   }
 
   private loadTextures(): void {
-    const texturePaths = [
-      BLOCK_DATA[BlockType.DIRT].texture,
-      BLOCK_DATA[BlockType.GRASS].texture,
-      BLOCK_DATA[BlockType.STONE].texture,
-    ];
+    const paths: string[] = ALL_BLOCKS.map(bt => BLOCK_DATA[bt].texture).filter(Boolean);
+    paths.push('/assets/textures/block/grass_block_side.png');
 
-    for (const path of texturePaths) {
-      if (!path) continue;
+    for (const path of paths) {
       const tex = this.loader.load(path);
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.NearestFilter;
@@ -36,75 +32,80 @@ export class World {
     }
   }
 
-  private chunkKey(cx: number, cz: number): string {
-    return `${cx},${cz}`;
+  private chunkKey(cx: number, cy: number, cz: number): string {
+    return `${cx},${cy},${cz}`;
   }
 
-  getChunk(cx: number, cz: number): Chunk | undefined {
-    return this.chunks.get(this.chunkKey(cx, cz));
+  getChunk(cx: number, cy: number, cz: number): Chunk | undefined {
+    return this.chunks.get(this.chunkKey(cx, cy, cz));
   }
 
   /** Get block at world coordinates */
   getBlock(wx: number, wy: number, wz: number): BlockType {
     const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
     const cz = Math.floor(wz / CHUNK_SIZE);
-    const chunk = this.getChunk(cx, cz);
+    const chunk = this.getChunk(cx, cy, cz);
     if (!chunk) return BlockType.AIR;
 
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    return chunk.getBlock(lx, wy, lz);
+    return chunk.getBlock(lx, ly, lz);
   }
 
   /** Set block at world coordinates */
   setBlock(wx: number, wy: number, wz: number, type: BlockType): void {
     const cx = Math.floor(wx / CHUNK_SIZE);
+    const cy = Math.floor(wy / CHUNK_SIZE);
     const cz = Math.floor(wz / CHUNK_SIZE);
-    let chunk = this.getChunk(cx, cz);
+    let chunk = this.getChunk(cx, cy, cz);
     if (!chunk) return;
 
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+    const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-    chunk.setBlock(lx, wy, lz, type);
+    chunk.setBlock(lx, ly, lz, type);
 
-    // Rebuild this chunk
     this.rebuildChunk(chunk);
 
-    // Rebuild neighbors if block is on chunk edge
-    if (lx === 0) this.rebuildNeighborChunk(cx - 1, cz);
-    if (lx === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx + 1, cz);
-    if (lz === 0) this.rebuildNeighborChunk(cx, cz - 1);
-    if (lz === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx, cz + 1);
+    if (lx === 0) this.rebuildNeighborChunk(cx - 1, cy, cz);
+    if (lx === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx + 1, cy, cz);
+    if (ly === 0) this.rebuildNeighborChunk(cx, cy - 1, cz);
+    if (ly === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx, cy + 1, cz);
+    if (lz === 0) this.rebuildNeighborChunk(cx, cy, cz - 1);
+    if (lz === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx, cy, cz + 1);
   }
 
-  private rebuildNeighborChunk(cx: number, cz: number): void {
-    const chunk = this.getChunk(cx, cz);
+  private rebuildNeighborChunk(cx: number, cy: number, cz: number): void {
+    const chunk = this.getChunk(cx, cy, cz);
     if (chunk) this.rebuildChunk(chunk);
   }
 
-  /** Generate terrain for a chunk */
-  private generateChunk(cx: number, cz: number): Chunk {
-    const chunk = new Chunk(cx, cz);
+  /** Generate terrain for one vertical chunk in a column */
+  private generateChunk(cx: number, cy: number, cz: number): Chunk {
+    const chunk = new Chunk(cx, cy, cz);
     const worldX0 = cx * CHUNK_SIZE;
+    const worldY0 = cy * CHUNK_SIZE;
     const worldZ0 = cz * CHUNK_SIZE;
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX0 + x;
         const wz = worldZ0 + z;
-        const height = this.noise.getHeight(wx, wz);
+        const surfaceHeight = this.noise.getHeight(wx, wz);
 
         for (let y = 0; y < CHUNK_SIZE; y++) {
-          if (y === 0) {
+          const wy = worldY0 + y;
+
+          if (wy < surfaceHeight - 3) {
             chunk.setBlock(x, y, z, BlockType.STONE);
-          } else if (y < height - 3) {
-            chunk.setBlock(x, y, z, BlockType.STONE);
-          } else if (y < height) {
+          } else if (wy < surfaceHeight) {
             chunk.setBlock(x, y, z, BlockType.DIRT);
-          } else if (y === height) {
+          } else if (wy === surfaceHeight) {
             chunk.setBlock(x, y, z, BlockType.GRASS);
           }
-          // y > height: AIR (default)
+          // wy > surfaceHeight: AIR (default)
         }
       }
     }
@@ -112,45 +113,44 @@ export class World {
     return chunk;
   }
 
-  /** Build mesh for a chunk */
   private rebuildChunk(chunk: Chunk): void {
-    // Remove old meshes from scene
     for (const mesh of chunk.meshes) {
       this.scene.remove(mesh);
     }
 
-    // Build new meshes
     chunk.buildMeshes(this.textureAtlas, (wx, wy, wz) => this.getBlock(wx, wy, wz));
 
-    // Add new meshes to scene
     for (const mesh of chunk.meshes) {
       this.scene.add(mesh);
     }
   }
 
   /** Update which chunks are loaded based on player position */
-  update(playerX: number, playerZ: number): void {
+  update(playerX: number, playerY: number, playerZ: number): void {
     const pcx = Math.floor(playerX / CHUNK_SIZE);
+    const pcy = Math.floor(playerY / CHUNK_SIZE);
     const pcz = Math.floor(playerZ / CHUNK_SIZE);
 
     const neededChunks = new Set<string>();
 
-    // Load chunks in render distance
     for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
       for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
-        const cx = pcx + dx;
-        const cz = pcz + dz;
-        const key = this.chunkKey(cx, cz);
-        neededChunks.add(key);
+        for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
+          const cx = pcx + dx;
+          const cy = pcy + dy;
+          const cz = pcz + dz;
+          const key = this.chunkKey(cx, cy, cz);
+          neededChunks.add(key);
 
-        if (!this.chunks.has(key)) {
-          const chunk = this.generateChunk(cx, cz);
-          this.chunks.set(key, chunk);
-          this.rebuildChunk(chunk);
-        } else {
-          const chunk = this.chunks.get(key)!;
-          if (chunk.dirty) {
+          if (!this.chunks.has(key)) {
+            const chunk = this.generateChunk(cx, cy, cz);
+            this.chunks.set(key, chunk);
             this.rebuildChunk(chunk);
+          } else {
+            const chunk = this.chunks.get(key)!;
+            if (chunk.dirty) {
+              this.rebuildChunk(chunk);
+            }
           }
         }
       }
@@ -174,7 +174,6 @@ export class World {
     normal: THREE.Vector3;
     blockType: BlockType;
   } | null {
-    // DDA voxel traversal
     const step = new THREE.Vector3();
     const tMax = new THREE.Vector3();
     const tDelta = new THREE.Vector3();

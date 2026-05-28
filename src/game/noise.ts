@@ -32,8 +32,8 @@ export class TerrainNoise {
       frequency *= 2;
     }
 
-    // Normalize to 0..1, then scale to fit within 16-block chunk height
+    // Normalize to 0..1, then scale to terrain height range
     const normalized = (height / maxValue + 1) * 0.5;
-    return Math.floor(normalized * 8 + 4); // Height between 4 and 12
+    return Math.floor(normalized * 30 + 40); // Surface height between 40 and 70
   }
 }

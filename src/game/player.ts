@@ -18,6 +18,14 @@ export class Player {
   private world: World;
   private isPointerLocked: boolean = false;
 
+  // Mouse input buffering & smoothing
+  private rawDeltaX: number = 0;
+  private rawDeltaY: number = 0;
+  private smoothDeltaX: number = 0;
+  private smoothDeltaY: number = 0;
+  private readonly MAX_DELTA = 80;
+  private readonly SMOOTH = 0.5;
+
   // Block interaction
   private leftMouseDown: boolean = false;
   private rightMouseDown: boolean = false;
@@ -29,10 +37,14 @@ export class Player {
   // Highlight
   private highlightMesh: THREE.LineSegments;
 
+  // Inventory integration
+  private getSelectedBlock: () => BlockType = () => BlockType.DIRT;
+  public uiOpen: boolean = false;
+
   constructor(camera: THREE.PerspectiveCamera, world: World) {
     this.camera = camera;
     this.world = world;
-    this.position = new THREE.Vector3(0, 20, 0);
+    this.position = new THREE.Vector3(0, 80, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
 
     const highlightGeo = new THREE.BoxGeometry(1.005, 1.005, 1.005);
@@ -46,6 +58,10 @@ export class Player {
     this.setupControls();
   }
 
+  setGetSelectedBlock(fn: () => BlockType): void {
+    this.getSelectedBlock = fn;
+  }
+
   getHighlightMesh(): THREE.LineSegments {
     return this.highlightMesh;
   }
@@ -55,14 +71,13 @@ export class Player {
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
     document.addEventListener('mousemove', (e) => {
-      if (!this.isPointerLocked) return;
-      this.yaw -= e.movementX * MOUSE_SENSITIVITY;
-      this.pitch -= e.movementY * MOUSE_SENSITIVITY;
-      this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
+      if (!this.isPointerLocked || this.uiOpen) return;
+      this.rawDeltaX += e.movementX;
+      this.rawDeltaY += e.movementY;
     });
 
     document.addEventListener('mousedown', (e) => {
-      if (!this.isPointerLocked) return;
+      if (!this.isPointerLocked || this.uiOpen) return;
       if (e.button === 0) this.leftMouseDown = true;
       if (e.button === 2) this.rightMouseDown = true;
     });
@@ -84,6 +99,30 @@ export class Player {
   }
 
   update(dt: number): void {
+    // Skip mouse look when UI is open
+    if (!this.uiOpen) {
+      // ── Mouse input: cap spikes, smooth, then apply ──
+      let dx = this.rawDeltaX;
+      let dy = this.rawDeltaY;
+      this.rawDeltaX = 0;
+      this.rawDeltaY = 0;
+
+      dx = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, dx));
+      dy = Math.max(-this.MAX_DELTA, Math.min(this.MAX_DELTA, dy));
+
+      this.smoothDeltaX += (dx - this.smoothDeltaX) * (1 - this.SMOOTH);
+      this.smoothDeltaY += (dy - this.smoothDeltaY) * (1 - this.SMOOTH);
+
+      this.yaw -= this.smoothDeltaX * MOUSE_SENSITIVITY;
+      this.pitch -= this.smoothDeltaY * MOUSE_SENSITIVITY;
+      this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
+    } else {
+      this.rawDeltaX = 0;
+      this.rawDeltaY = 0;
+      this.smoothDeltaX = 0;
+      this.smoothDeltaY = 0;
+    }
+
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
@@ -112,11 +151,21 @@ export class Player {
     this.camera.position.copy(this.position);
     this.camera.position.y += PLAYER_HEIGHT * 0.9;
 
-    const euler = new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ');
-    this.camera.quaternion.setFromEuler(euler);
+    const lookDir = new THREE.Vector3(
+      -Math.sin(this.yaw) * Math.cos(this.pitch),
+      Math.sin(this.pitch),
+      -Math.cos(this.yaw) * Math.cos(this.pitch)
+    );
+    this.camera.lookAt(this.camera.position.clone().add(lookDir));
 
-    this.updateHighlight();
-    this.handleBlockInteraction();
+    if (!this.uiOpen) {
+      this.updateHighlight();
+      this.handleBlockInteraction();
+    } else {
+      this.highlightMesh.visible = false;
+      this.leftMouseDown = false;
+      this.rightMouseDown = false;
+    }
   }
 
   private collidesAt(pos: THREE.Vector3): boolean {
@@ -147,38 +196,30 @@ export class Player {
   }
 
   private moveWithCollision(dt: number): void {
-    // Move and resolve each axis independently
-
-    // X axis
     this.position.x += this.velocity.x * dt;
     if (this.collidesAt(this.position)) {
       this.position.x -= this.velocity.x * dt;
       this.velocity.x = 0;
     }
 
-    // Z axis
     this.position.z += this.velocity.z * dt;
     if (this.collidesAt(this.position)) {
       this.position.z -= this.velocity.z * dt;
       this.velocity.z = 0;
     }
 
-    // Y axis
     this.isGrounded = false;
     this.position.y += this.velocity.y * dt;
     if (this.collidesAt(this.position)) {
       if (this.velocity.y <= 0) {
-        // Falling: snap to top of the solid block we landed on
         this.position.y = Math.floor(this.position.y - 0.001) + 1;
         this.isGrounded = true;
       } else {
-        // Rising: hit ceiling, undo
         this.position.y -= this.velocity.y * dt;
       }
       this.velocity.y = 0;
     }
 
-    // Ground check: if not moving down, verify we're still on ground
     if (!this.isGrounded && this.velocity.y === 0) {
       const testPos = this.position.clone();
       testPos.y -= 0.05;
@@ -229,7 +270,7 @@ export class Player {
           this.position.z + halfW > placePos.z && this.position.z - halfW < placePos.z + 1;
 
         if (!overlaps) {
-          this.world.setBlock(placePos.x, placePos.y, placePos.z, BlockType.DIRT);
+          this.world.setBlock(placePos.x, placePos.y, placePos.z, this.getSelectedBlock());
           this.lastPlaceTime = now;
         }
       }

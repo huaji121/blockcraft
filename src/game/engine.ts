@@ -19,8 +19,8 @@ export class GameEngine {
     this.renderer = new THREE.WebGLRenderer({ antialias: false });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.shadowMap.enabled = false; // Disable for performance
-    this.renderer.setClearColor(0x87ceeb); // Sky blue
+    this.renderer.shadowMap.enabled = false;
+    this.renderer.setClearColor(0x87ceeb);
     container.appendChild(this.renderer.domElement);
 
     // Scene
@@ -43,7 +43,6 @@ export class GameEngine {
     directionalLight.position.set(50, 100, 50);
     this.scene.add(directionalLight);
 
-    // Hemisphere light for better ambient
     const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.3);
     this.scene.add(hemiLight);
 
@@ -51,16 +50,28 @@ export class GameEngine {
     this.world = new World(this.scene);
     this.player = new Player(this.camera, this.world);
 
-    // Add highlight mesh to scene
     this.scene.add(this.player.getHighlightMesh());
 
     // Events
     window.addEventListener('resize', this.onResize.bind(this));
 
-    // Click to lock pointer
     this.renderer.domElement.addEventListener('click', () => {
-      this.player.requestPointerLock(this.renderer.domElement);
+      if (!this.player.uiOpen) {
+        this.player.requestPointerLock(this.renderer.domElement);
+      }
     });
+  }
+
+  getPlayer(): Player {
+    return this.player;
+  }
+
+  requestPointerLock(): void {
+    this.player.requestPointerLock(this.renderer.domElement);
+  }
+
+  exitPointerLock(): void {
+    document.exitPointerLock();
   }
 
   private onResize(): void {
@@ -84,16 +95,12 @@ export class GameEngine {
     requestAnimationFrame(() => this.animate());
 
     const now = performance.now();
-    const dt = Math.min((now - this.lastTime) / 1000, 0.05); // Cap delta time
+    const dt = Math.min((now - this.lastTime) / 1000, 0.05);
     this.lastTime = now;
 
-    // Update player
     this.player.update(dt);
+    this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
 
-    // Update world chunks based on player position
-    this.world.update(this.player.position.x, this.player.position.z);
-
-    // Render
     this.renderer.render(this.scene, this.camera);
   }
 
