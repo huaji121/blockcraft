@@ -101,6 +101,40 @@
   border-radius: 2px;
 }
 
+/* ── Tabs ── */
+.inv-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.inv-tab {
+  flex: 1;
+  padding: 4px 8px;
+  background: #8b8b8b;
+  border: 2px solid #555;
+  box-shadow:
+    inset 1px 1px 0 #fff,
+    inset -1px -1px 0 #373737;
+  color: #404040;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  text-align: center;
+}
+
+.inv-tab.active {
+  background: #c6c6c6;
+  box-shadow:
+    inset 1px 1px 0 #373737,
+    inset -1px -1px 0 #fff;
+}
+
+.inv-tab:hover:not(.active) {
+  background: #aaa;
+}
+
 /* ── Backpack ── */
 .backpack-body {
   display: flex;

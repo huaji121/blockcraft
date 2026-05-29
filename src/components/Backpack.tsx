@@ -1,4 +1,6 @@
-import { BlockType, BLOCK_DATA } from '../game/blocks';
+import { useState } from 'react';
+import { BlockType, BLOCK_DATA, ALL_BLOCKS } from '../game/blocks';
+import { BlockCube } from './BlockCube';
 import './Inventory.css';
 
 interface Slot {
@@ -12,61 +14,111 @@ interface Props {
   selected: number;
   onSlotClick: (source: 'hotbar' | 'backpack', index: number) => void;
   onClose: () => void;
-  onOpenCreative: () => void;
 }
 
 export function Backpack({
   hotbar, backpack, selected,
-  onSlotClick, onClose, onOpenCreative,
+  onSlotClick, onClose,
 }: Props) {
+  const [tab, setTab] = useState<'inventory' | 'creative'>('inventory');
+
+  const renderSlot = (slot: Slot) => {
+    const data = BLOCK_DATA[slot.type];
+    return (
+      <>
+        {slot.type !== 0 && <BlockCube blockType={slot.type} size={22} />}
+        {slot.count > 1 && <span className="count">{slot.count}</span>}
+      </>
+    );
+  };
+
   return (
     <div className="inv-overlay" onClick={onClose}>
       <div className="inv-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="inv-title">Backpack</div>
-        <button className="inv-btn" onClick={onOpenCreative}>
-          Creative Inventory
-        </button>
+        {/* Tabs */}
+        <div className="inv-tabs">
+          <button
+            className={`inv-tab ${tab === 'inventory' ? 'active' : ''}`}
+            onClick={() => setTab('inventory')}
+          >
+            Inventory
+          </button>
+          <button
+            className={`inv-tab ${tab === 'creative' ? 'active' : ''}`}
+            onClick={() => setTab('creative')}
+          >
+            Creative
+          </button>
+        </div>
 
         <div className="backpack-body">
-          {/* Backpack grid: 3 rows x 9 */}
-          <div className="inv-grid inv-grid-9">
-            {backpack.map((slot, i) => {
-              const data = BLOCK_DATA[slot.type];
-              return (
-                <div
-                  key={`bp-${i}`}
-                  className="inv-slot"
-                  onClick={() => onSlotClick('backpack', i)}
-                >
-                  {slot.type !== 0 && data.texture && (
-                    <img src={data.texture} alt={data.name} draggable={false} />
-                  )}
-                  {slot.count > 1 && <span className="count">{slot.count}</span>}
-                </div>
-              );
-            })}
-          </div>
+          {tab === 'inventory' ? (
+            <>
+              {/* Backpack grid: 3 rows x 9 */}
+              <div className="inv-grid inv-grid-9">
+                {backpack.map((slot, i) => (
+                  <div
+                    key={`bp-${i}`}
+                    className="inv-slot"
+                    onClick={() => onSlotClick('backpack', i)}
+                  >
+                    {renderSlot(slot)}
+                  </div>
+                ))}
+              </div>
 
-          <div className="backpack-divider" />
+              <div className="backpack-divider" />
 
-          {/* Hotbar row */}
-          <div className="inv-grid inv-grid-9">
-            {hotbar.map((slot, i) => {
-              const data = BLOCK_DATA[slot.type];
-              return (
-                <div
-                  key={`hb-${i}`}
-                  className={`inv-slot ${i === selected ? 'selected' : ''}`}
-                  onClick={() => onSlotClick('hotbar', i)}
-                >
-                  {slot.type !== 0 && data.texture && (
-                    <img src={data.texture} alt={data.name} draggable={false} />
-                  )}
-                  {slot.count > 1 && <span className="count">{slot.count}</span>}
+              {/* Hotbar row */}
+              <div className="inv-grid inv-grid-9">
+                {hotbar.map((slot, i) => (
+                  <div
+                    key={`hb-${i}`}
+                    className={`inv-slot ${i === selected ? 'selected' : ''}`}
+                    onClick={() => onSlotClick('hotbar', i)}
+                  >
+                    {renderSlot(slot)}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Creative grid: all block types */}
+              <div className="creative-grid-wrap">
+                <div className="inv-grid inv-grid-9">
+                  {ALL_BLOCKS.map((bt) => {
+                    const data = BLOCK_DATA[bt];
+                    return (
+                      <div
+                        key={bt}
+                        className="inv-slot"
+                        title={data.name}
+                        onClick={() => onSlotClick('backpack', -1 - bt)}
+                      >
+                        <BlockCube blockType={bt} size={22} />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+
+              <div className="backpack-divider" />
+
+              {/* Hotbar row */}
+              <div className="inv-grid inv-grid-9">
+                {hotbar.map((slot, i) => (
+                  <div
+                    key={`hb-${i}`}
+                    className={`inv-slot ${i === selected ? 'selected' : ''}`}
+                    onClick={() => onSlotClick('hotbar', i)}
+                  >
+                    {renderSlot(slot)}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <button className="inv-btn" onClick={onClose}>Close</button>

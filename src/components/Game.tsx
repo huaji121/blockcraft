@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import { GameEngine } from '../game/engine';
-import { BlockType, BLOCK_DATA } from '../game/blocks';
+import { BlockType } from '../game/blocks';
 import { Hotbar } from './Hotbar';
 import { Backpack } from './Backpack';
-import { CreativeInventory } from './CreativeInventory';
+import { BlockCube } from './BlockCube';
 import { DebugOverlay } from './DebugOverlay';
 import { Settings, type GameSettings } from './Settings';
 import './Inventory.css';
@@ -90,7 +90,6 @@ export function Game() {
 
   const [selectedSlot, setSelectedSlot] = useState(0);
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
-  const [isCreativeOpen, setIsCreativeOpen] = useState(false);
 
   // Debug overlay
   const [showDebug, setShowDebug] = useState(false);
@@ -152,27 +151,35 @@ export function Game() {
   }, []);
 
   // Click a slot: pick up or place
+  // Creative tab uses negative index: -1 - blockType
   const handleSlotClick = useCallback((source: 'hotbar' | 'backpack', index: number) => {
+    // Creative tab click: pick up a full stack of that block type
+    if (source === 'backpack' && index < 0) {
+      const blockType = (-1 - index) as BlockType;
+      // If holding something, drop it first
+      if (heldItem) {
+        dispatch({ type: 'ADD_TO_BACKPACK', blockType: heldItem.type });
+      }
+      setHeldItem({ type: blockType, count: 64 });
+      return;
+    }
+
     const arr = source === 'hotbar' ? hotbarRef.current : backpackRef.current;
     const clicked = arr[index];
 
     if (heldItem) {
       if (clicked.type === BlockType.AIR) {
-        // Place held item into empty slot
         dispatch({ type: 'CLICK_SLOT', source, index, heldItem });
         setHeldItem(null);
       } else if (clicked.type === heldItem.type) {
-        // Same type: stack
         dispatch({ type: 'CLICK_SLOT', source, index, heldItem });
         setHeldItem(null);
       } else {
-        // Different type: swap — put held into slot, pick up what was there
         dispatch({ type: 'CLICK_SLOT', source, index, heldItem });
         setHeldItem({ ...clicked });
       }
     } else {
       if (clicked.type !== BlockType.AIR) {
-        // Pick up
         dispatch({ type: 'CLICK_SLOT', source, index, heldItem: null });
         setHeldItem({ ...clicked });
       }
@@ -186,7 +193,6 @@ export function Game() {
       setHeldItem(null);
     }
     setIsBackpackOpen(false);
-    setIsCreativeOpen(false);
     setTimeout(() => engineRef.current?.requestPointerLock(), 50);
   }, [heldItem]);
 
@@ -206,8 +212,8 @@ export function Game() {
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    engine.getPlayer().uiOpen = isBackpackOpen || isCreativeOpen || showSettings;
-  }, [isBackpackOpen, isCreativeOpen]);
+    engine.getPlayer().uiOpen = isBackpackOpen || showSettings;
+  }, [isBackpackOpen, showSettings]);
 
   // Keyboard: E for backpack, 1-9 for hotbar
   useEffect(() => {
@@ -217,7 +223,6 @@ export function Game() {
         setIsBackpackOpen(prev => {
           if (!prev) {
             engineRef.current?.exitPointerLock();
-            setIsCreativeOpen(false);
           } else {
             // Closing: drop held item
             if (heldItemRef.current) {
@@ -225,7 +230,6 @@ export function Game() {
               setHeldItem(null);
             }
             setTimeout(() => engineRef.current?.requestPointerLock(), 50);
-            setIsCreativeOpen(false);
           }
           return !prev;
         });
@@ -273,10 +277,6 @@ export function Game() {
   const isBackpackOpenRef = useRef(isBackpackOpen);
   isBackpackOpenRef.current = isBackpackOpen;
 
-  const handleCreativeSelect = useCallback((blockType: number) => {
-    dispatch({ type: 'ADD_TO_BACKPACK', blockType: blockType as BlockType });
-  }, []);
-
   return (
     <div
       ref={containerRef}
@@ -312,21 +312,13 @@ export function Game() {
         onSlotClick={(i) => handleSlotClick('hotbar', i)}
       />
 
-      {isBackpackOpen && !isCreativeOpen && (
+      {isBackpackOpen && (
         <Backpack
           hotbar={inv.hotbar}
           backpack={inv.backpack}
           selected={selectedSlot}
           onSlotClick={handleSlotClick}
           onClose={closeBackpack}
-          onOpenCreative={() => setIsCreativeOpen(true)}
-        />
-      )}
-
-      {isCreativeOpen && (
-        <CreativeInventory
-          onSelect={handleCreativeSelect}
-          onBack={() => setIsCreativeOpen(false)}
         />
       )}
 
@@ -355,11 +347,7 @@ export function Game() {
             top: mousePos.y,
           }}
         >
-          <img
-            src={BLOCK_DATA[heldItem.type].texture}
-            alt=""
-            draggable={false}
-          />
+          <BlockCube blockType={heldItem.type} size={24} />
           {heldItem.count > 1 && (
             <span className="count">{heldItem.count}</span>
           )}

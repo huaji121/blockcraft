@@ -1,4 +1,5 @@
 import { BlockType, BLOCK_DATA } from '../game/blocks';
+import { BlockCube } from './BlockCube';
 import './Inventory.css';
 
 interface Slot {
@@ -23,9 +24,7 @@ export function Hotbar({ slots, selected, onSlotClick }: Props) {
             className={`inv-slot ${i === selected ? 'selected' : ''}`}
             onClick={() => onSlotClick(i)}
           >
-            {slot.type !== 0 && data.texture && (
-              <img src={data.texture} alt={data.name} draggable={false} />
-            )}
+            {slot.type !== 0 && <BlockCube blockType={slot.type} size={22} />}
             {slot.count > 1 && <span className="count">{slot.count}</span>}
           </div>
         );
