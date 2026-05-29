@@ -148,12 +148,10 @@ export class Chunk {
         tex.generateMipmaps = false;
       }
 
-      const isGrassTop = texPath === BLOCK_DATA[BlockType.GRASS].texture;
       const isGrassSide = texPath === '/assets/textures/block/grass_block_side.png';
       const material = new THREE.MeshLambertMaterial({
         map: tex || null,
         side: transparent ? THREE.DoubleSide : THREE.FrontSide,
-        color: isGrassTop ? 0x5a8f29 : 0xffffff,
         transparent: transparent || isGrassSide,
         opacity: transparent ? 0.5 : 1,
         alphaTest: isGrassSide ? 0.1 : 0,

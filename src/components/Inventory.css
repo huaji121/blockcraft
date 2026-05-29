@@ -76,11 +76,6 @@
   image-rendering: pixelated;
 }
 
-/* Grass block tint — grayscale asset needs green overlay */
-.inv-slot .grass-tint {
-  filter: brightness(0.7) sepia(1) hue-rotate(50deg) saturate(4);
-}
-
 .inv-slot .count {
   position: absolute;
   bottom: 1px;

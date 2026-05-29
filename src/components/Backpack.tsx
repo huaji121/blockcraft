@@ -39,12 +39,7 @@ export function Backpack({
                   onClick={() => onSlotClick('backpack', i)}
                 >
                   {slot.type !== 0 && data.texture && (
-                    <img
-                      src={data.texture}
-                      alt={data.name}
-                      draggable={false}
-                      className={slot.type === BlockType.GRASS ? 'grass-tint' : undefined}
-                    />
+                    <img src={data.texture} alt={data.name} draggable={false} />
                   )}
                   {slot.count > 1 && <span className="count">{slot.count}</span>}
                 </div>
@@ -65,12 +60,7 @@ export function Backpack({
                   onClick={() => onSlotClick('hotbar', i)}
                 >
                   {slot.type !== 0 && data.texture && (
-                    <img
-                      src={data.texture}
-                      alt={data.name}
-                      draggable={false}
-                      className={slot.type === BlockType.GRASS ? 'grass-tint' : undefined}
-                    />
+                    <img src={data.texture} alt={data.name} draggable={false} />
                   )}
                   {slot.count > 1 && <span className="count">{slot.count}</span>}
                 </div>
