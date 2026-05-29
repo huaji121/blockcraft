@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, BLOCK_SIZE } from './constants';
 import { BlockType, BLOCK_DATA, getBlockFaceTexture } from './blocks';
+import type { TextureAtlas } from './atlas';
 
 export class Chunk {
   public blocks: Uint8Array;
@@ -51,26 +52,45 @@ export class Chunk {
   }
 
   buildMeshes(
-    textureAtlas: Map<string, THREE.Texture>,
+    atlas: TextureAtlas,
     getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType
   ): void {
     this.disposeMeshes();
 
-    const opaqueByTex = new Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>();
-    const transparentByTex = new Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>();
+    // Opaque: single merged geometry + single material (atlas)
+    const opaquePositions: number[] = [];
+    const opaqueNormals: number[] = [];
+    const opaqueUvs: number[] = [];
+    const opaqueIndices: number[] = [];
+
+    // Transparent: separate geometry (still uses atlas)
+    const transPositions: number[] = [];
+    const transNormals: number[] = [];
+    const transUvs: number[] = [];
+    const transIndices: number[] = [];
 
     const worldX0 = this.cx * CHUNK_SIZE;
     const worldY0 = this.cy * CHUNK_SIZE;
     const worldZ0 = this.cz * CHUNK_SIZE;
 
     const faceDefs = [
-      { dir: [0, 1, 0] as [number, number, number], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
-      { dir: [0, -1, 0] as [number, number, number], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
-      { dir: [1, 0, 0] as [number, number, number], corners: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] as number[][], uvs: [0,0, 0,1, 1,1, 1,0] as number[] },
-      { dir: [-1, 0, 0] as [number, number, number], corners: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] as number[][], uvs: [0,0, 0,1, 1,1, 1,0] as number[] },
-      { dir: [0, 0, 1] as [number, number, number], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
-      { dir: [0, 0, -1] as [number, number, number], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] as number[][], uvs: [0,0, 1,0, 1,1, 0,1] as number[] },
+      { dir: [0, 1, 0] as [number, number, number], corners: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] as number[][] },
+      { dir: [0, -1, 0] as [number, number, number], corners: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] as number[][] },
+      { dir: [1, 0, 0] as [number, number, number], corners: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] as number[][] },
+      { dir: [-1, 0, 0] as [number, number, number], corners: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] as number[][] },
+      { dir: [0, 0, 1] as [number, number, number], corners: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] as number[][] },
+      { dir: [0, 0, -1] as [number, number, number], corners: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] as number[][] },
     ];
+
+    // UV mapping per face direction
+    const faceUvMap: Record<string, number[][]> = {
+      '0,1,0':  [[0, 0], [1, 0], [1, 1], [0, 1]], // top
+      '0,-1,0': [[0, 0], [1, 0], [1, 1], [0, 1]], // bottom
+      '1,0,0':  [[0, 0], [0, 1], [1, 1], [1, 0]], // right
+      '-1,0,0': [[0, 0], [0, 1], [1, 1], [1, 0]], // left
+      '0,0,1':  [[0, 0], [1, 0], [1, 1], [0, 1]], // front
+      '0,0,-1': [[0, 0], [1, 0], [1, 1], [0, 1]], // back
+    };
 
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let y = 0; y < CHUNK_SIZE; y++) {
@@ -83,6 +103,11 @@ export class Chunk {
           const wy = worldY0 + y;
           const wz = worldZ0 + z;
 
+          const positions = isTransparent ? transPositions : opaquePositions;
+          const normals = isTransparent ? transNormals : opaqueNormals;
+          const uvs = isTransparent ? transUvs : opaqueUvs;
+          const indices = isTransparent ? transIndices : opaqueIndices;
+
           for (const face of faceDefs) {
             const nx = wx + face.dir[0];
             const ny = wy + face.dir[1];
@@ -92,24 +117,32 @@ export class Chunk {
             if (!this.shouldRenderFace(block, neighbor)) continue;
 
             const texPath = this.getTextureForFace(block, face.dir);
-            const groupMap = isTransparent ? transparentByTex : opaqueByTex;
+            const uvRect = atlas.getUV(texPath);
+            if (!uvRect) continue;
 
-            if (!groupMap.has(texPath)) {
-              groupMap.set(texPath, { positions: [], normals: [], uvs: [], indices: [] });
-            }
-            const group = groupMap.get(texPath)!;
-            const baseIndex = group.positions.length / 3;
+            const faceKey = `${face.dir[0]},${face.dir[1]},${face.dir[2]}`;
+            const faceUvs = faceUvMap[faceKey];
+            const baseIndex = positions.length / 3;
 
-            for (const corner of face.corners) {
-              group.positions.push(
+            for (let i = 0; i < 4; i++) {
+              const corner = face.corners[i];
+              positions.push(
                 (x + corner[0]) * BLOCK_SIZE,
                 (y + corner[1]) * BLOCK_SIZE,
                 (z + corner[2]) * BLOCK_SIZE
               );
-              group.normals.push(face.dir[0], face.dir[1], face.dir[2]);
+              normals.push(face.dir[0], face.dir[1], face.dir[2]);
+
+              // Map 0-1 face UVs to atlas UVs
+              const fu = faceUvs[i][0];
+              const fv = faceUvs[i][1];
+              uvs.push(
+                uvRect.u0 + fu * (uvRect.u1 - uvRect.u0),
+                uvRect.v0 + fv * (uvRect.v1 - uvRect.v0)
+              );
             }
-            group.uvs.push(...face.uvs);
-            group.indices.push(
+
+            indices.push(
               baseIndex, baseIndex + 1, baseIndex + 2,
               baseIndex, baseIndex + 2, baseIndex + 3
             );
@@ -118,55 +151,60 @@ export class Chunk {
       }
     }
 
-    this.buildMeshGroup(opaqueByTex, textureAtlas, false, 0);
-    this.buildMeshGroup(transparentByTex, textureAtlas, true, 1);
-    this.dirty = false;
-  }
+    // Build opaque mesh (single draw call per chunk)
+    if (opaquePositions.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(opaquePositions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(opaqueNormals, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(opaqueUvs, 2));
+      geo.setIndex(opaqueIndices);
 
-  private buildMeshGroup(
-    facesByTex: Map<string, { positions: number[]; normals: number[]; uvs: number[]; indices: number[] }>,
-    textureAtlas: Map<string, THREE.Texture>,
-    transparent: boolean,
-    renderOrder: number
-  ): void {
-    for (const [texPath, group] of facesByTex) {
-      if (group.positions.length === 0) continue;
-
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(group.positions, 3));
-      geometry.setAttribute('normal', new THREE.Float32BufferAttribute(group.normals, 3));
-      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(group.uvs, 2));
-      geometry.setIndex(group.indices);
-
-      const tex = textureAtlas.get(texPath);
-      if (tex) {
-        tex.magFilter = THREE.NearestFilter;
-        tex.minFilter = THREE.NearestFilter;
-        tex.generateMipmaps = false;
-      }
-
-      const isGrassSide = texPath === '/assets/textures/block/grass_block_side.png';
-      const material = new THREE.MeshLambertMaterial({
-        map: tex || null,
-        side: transparent ? THREE.DoubleSide : THREE.FrontSide,
-        transparent: transparent || isGrassSide,
-        opacity: transparent ? 0.5 : 1,
-        alphaTest: isGrassSide ? 0.1 : 0,
-        depthWrite: !transparent,
-        polygonOffset: transparent,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
+      const mat = new THREE.MeshLambertMaterial({
+        map: atlas.getTexture(),
+        side: THREE.FrontSide,
+        alphaTest: 0.1,
       });
 
-      const mesh = new THREE.Mesh(geometry, material);
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(
         this.cx * CHUNK_SIZE * BLOCK_SIZE,
         this.cy * CHUNK_SIZE * BLOCK_SIZE,
         this.cz * CHUNK_SIZE * BLOCK_SIZE
       );
-      mesh.renderOrder = renderOrder;
+      mesh.renderOrder = 0;
       this.meshes.push(mesh);
     }
+
+    // Build transparent mesh
+    if (transPositions.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(transPositions, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(transNormals, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(transUvs, 2));
+      geo.setIndex(transIndices);
+
+      const mat = new THREE.MeshLambertMaterial({
+        map: atlas.getTexture(),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        this.cx * CHUNK_SIZE * BLOCK_SIZE,
+        this.cy * CHUNK_SIZE * BLOCK_SIZE,
+        this.cz * CHUNK_SIZE * BLOCK_SIZE
+      );
+      mesh.renderOrder = 1;
+      this.meshes.push(mesh);
+    }
+
+    this.dirty = false;
   }
 
   disposeMeshes(): void {
