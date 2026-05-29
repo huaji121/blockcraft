@@ -21,8 +21,16 @@ export class World {
   }
 
   private loadTextures(): void {
-    const paths: string[] = ALL_BLOCKS.map(bt => BLOCK_DATA[bt].texture).filter(Boolean);
-    paths.push('/assets/textures/block/grass_block_side.png');
+    const paths = new Set<string>();
+    for (const bt of ALL_BLOCKS) {
+      const data = BLOCK_DATA[bt];
+      if (data.texture) paths.add(data.texture);
+      if (data.faceTextures) {
+        paths.add(data.faceTextures.top);
+        paths.add(data.faceTextures.bottom);
+        paths.add(data.faceTextures.side);
+      }
+    }
 
     for (const path of paths) {
       const tex = this.loader.load(path);

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_SIZE, BLOCK_SIZE } from './constants';
-import { BlockType, BLOCK_DATA } from './blocks';
+import { BlockType, BLOCK_DATA, getBlockFaceTexture } from './blocks';
 
 export class Chunk {
   public blocks: Uint8Array;
@@ -35,12 +35,9 @@ export class Chunk {
   }
 
   private getTextureForFace(block: BlockType, faceDir: [number, number, number]): string {
-    if (block === BlockType.GRASS) {
-      if (faceDir[1] === 1) return BLOCK_DATA[BlockType.GRASS].texture;
-      if (faceDir[1] === -1) return BLOCK_DATA[BlockType.DIRT].texture;
-      return '/assets/textures/block/grass_block_side.png';
-    }
-    return BLOCK_DATA[block].texture;
+    if (faceDir[1] === 1) return getBlockFaceTexture(block, 'top');
+    if (faceDir[1] === -1) return getBlockFaceTexture(block, 'bottom');
+    return getBlockFaceTexture(block, 'side');
   }
 
   private shouldRenderFace(block: BlockType, neighbor: BlockType): boolean {

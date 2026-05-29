@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { World } from './world';
 import { Player } from './player';
 import { ParticleManager } from './particles';
-import { BLOCK_DATA } from './blocks';
+import { BLOCK_DATA, getBlockFaceTexture } from './blocks';
 
 export interface EngineSettings {
   fpsLimit: number;      // 0 = unlimited
@@ -66,10 +66,10 @@ export class GameEngine {
 
     // Particle callback on block break
     this.player.setOnBlockBreak((wx, wy, wz, blockType) => {
-      const texPath = BLOCK_DATA[blockType]?.texture;
-      if (!texPath) return;
-      const tex = this.world.getTexture(texPath);
-      this.particles.spawnBlockBreak(wx, wy, wz, tex);
+      const topTex = this.world.getTexture(getBlockFaceTexture(blockType, 'top'));
+      const bottomTex = this.world.getTexture(getBlockFaceTexture(blockType, 'bottom'));
+      const sideTex = this.world.getTexture(getBlockFaceTexture(blockType, 'side'));
+      this.particles.spawnBlockBreak(wx, wy, wz, topTex, bottomTex, sideTex);
     });
 
     window.addEventListener('resize', this.onResize.bind(this));

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 
 interface Particle {
   mesh: THREE.Mesh;
+  materials: THREE.MeshLambertMaterial[];
   velocity: THREE.Vector3;
   life: number;
   maxLife: number;
@@ -11,23 +12,37 @@ export class ParticleManager {
   private scene: THREE.Scene;
   private particles: Particle[] = [];
   private gravity: number = 15;
+  private sharedGeo: THREE.BoxGeometry;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    this.sharedGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
   }
 
-  /** Spawn block-breaking particles at world position using the given texture */
-  spawnBlockBreak(x: number, y: number, z: number, texture: THREE.Texture | null): void {
-    const sharedGeo = new THREE.BoxGeometry(0.15, 0.15, 0.15);
-
+  /** Spawn block-breaking particles with per-face textures */
+  spawnBlockBreak(
+    x: number, y: number, z: number,
+    topTex: THREE.Texture | null,
+    bottomTex: THREE.Texture | null,
+    sideTex: THREE.Texture | null,
+  ): void {
     for (let i = 0; i < 8; i++) {
-      const material = new THREE.MeshLambertMaterial({
-        map: texture,
-        transparent: true,
-        opacity: 1,
-      });
+      const makeMat = (tex: THREE.Texture | null) =>
+        new THREE.MeshLambertMaterial({
+          map: tex ? tex.clone() : null,
+          transparent: true,
+          opacity: 1,
+          depthWrite: false,
+        });
 
-      const mesh = new THREE.Mesh(sharedGeo, material);
+      const top = makeMat(topTex);
+      const bottom = makeMat(bottomTex);
+      const side = makeMat(sideTex);
+
+      // BoxGeometry groups: +X, -X, +Y, -Y, +Z, -Z
+      const materials = [side, side, top, bottom, side, side];
+
+      const mesh = new THREE.Mesh(this.sharedGeo, materials);
       mesh.position.set(
         x + 0.5 + (Math.random() - 0.5) * 0.8,
         y + 0.5 + (Math.random() - 0.5) * 0.8,
@@ -43,7 +58,7 @@ export class ParticleManager {
       const life = 0.5 + Math.random() * 0.5;
 
       this.scene.add(mesh);
-      this.particles.push({ mesh, velocity, life, maxLife: life });
+      this.particles.push({ mesh, materials, velocity, life, maxLife: life });
     }
   }
 
@@ -54,7 +69,7 @@ export class ParticleManager {
 
       if (p.life <= 0) {
         this.scene.remove(p.mesh);
-        (p.mesh.material as THREE.MeshLambertMaterial).dispose();
+        p.materials.forEach(m => m.dispose());
         this.particles.splice(i, 1);
         continue;
       }
@@ -64,17 +79,20 @@ export class ParticleManager {
       p.mesh.rotation.x += dt * 5;
       p.mesh.rotation.z += dt * 3;
 
-      // Fade out
+      // Fade out all materials
       const alpha = p.life / p.maxLife;
-      (p.mesh.material as THREE.MeshLambertMaterial).opacity = alpha;
+      for (const mat of p.materials) {
+        mat.opacity = alpha;
+      }
     }
   }
 
   dispose(): void {
     for (const p of this.particles) {
       this.scene.remove(p.mesh);
-      (p.mesh.material as THREE.MeshLambertMaterial).dispose();
+      p.materials.forEach(m => m.dispose());
     }
     this.particles = [];
+    this.sharedGeo.dispose();
   }
 }
