@@ -4,6 +4,8 @@ import { BlockType, BLOCK_DATA } from '../game/blocks';
 import { Hotbar } from './Hotbar';
 import { Backpack } from './Backpack';
 import { CreativeInventory } from './CreativeInventory';
+import { DebugOverlay } from './DebugOverlay';
+import { Settings, type GameSettings } from './Settings';
 import './Inventory.css';
 
 export interface Slot {
@@ -90,6 +92,44 @@ export function Game() {
   const [isBackpackOpen, setIsBackpackOpen] = useState(false);
   const [isCreativeOpen, setIsCreativeOpen] = useState(false);
 
+  // Debug overlay
+  const [showDebug, setShowDebug] = useState(false);
+  const [fps, setFps] = useState(0);
+  const [playerPos, setPlayerPos] = useState({ x: 0, y: 0, z: 0 });
+
+  // Settings
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<GameSettings>({
+    fpsLimit: 0,
+    chunksPerFrame: 8,
+    renderDistance: 8,
+  });
+
+  // Position + FPS tracker
+  useEffect(() => {
+    let rafId: number;
+
+    const tick = () => {
+      const engine = engineRef.current;
+      if (engine) {
+        const p = engine.getPlayer().position;
+        setPlayerPos({ x: p.x, y: p.y, z: p.z });
+        setFps(engine.fps);
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  // Sync settings to engine
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.updateSettings(settings);
+  }, [settings]);
+
   // Held item (follows mouse)
   const [heldItem, setHeldItem] = useState<Slot | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -166,7 +206,7 @@ export function Game() {
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    engine.getPlayer().uiOpen = isBackpackOpen || isCreativeOpen;
+    engine.getPlayer().uiOpen = isBackpackOpen || isCreativeOpen || showSettings;
   }, [isBackpackOpen, isCreativeOpen]);
 
   // Keyboard: E for backpack, 1-9 for hotbar
@@ -191,6 +231,22 @@ export function Game() {
         });
         return;
       }
+      if (e.code === 'F3') {
+        e.preventDefault();
+        setShowDebug(prev => !prev);
+        return;
+      }
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        setShowSettings(prev => {
+          if (!prev) {
+            engineRef.current?.exitPointerLock();
+          }
+          return !prev;
+        });
+        return;
+      }
+
       const digit = parseInt(e.key);
       if (digit >= 1 && digit <= 9) setSelectedSlot(digit - 1);
     };
@@ -272,6 +328,22 @@ export function Game() {
           onSelect={handleCreativeSelect}
           onBack={() => setIsCreativeOpen(false)}
         />
+      )}
+
+      {showSettings && (
+        <Settings
+          settings={settings}
+          onChange={setSettings}
+          onClose={() => {
+            setShowSettings(false);
+            setTimeout(() => engineRef.current?.requestPointerLock(), 50);
+          }}
+        />
+      )}
+
+      {/* Debug overlay */}
+      {showDebug && (
+        <DebugOverlay fps={fps} x={playerPos.x} y={playerPos.y} z={playerPos.z} />
       )}
 
       {/* Held item following cursor */}

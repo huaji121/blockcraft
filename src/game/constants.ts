@@ -1,5 +1,5 @@
 export const CHUNK_SIZE = 16;
-export const RENDER_DISTANCE = 4;
+export const RENDER_DISTANCE = 8;
 export const RENDER_DISTANCE_Y = 3; // vertical chunk render distance
 export const CHUNKS_PER_FRAME = 4; // max chunks to generate per frame
 export const BLOCK_SIZE = 1;

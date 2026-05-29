@@ -10,6 +10,8 @@ export class World {
   private scene: THREE.Scene;
   private textureAtlas: Map<string, THREE.Texture> = new Map();
   private loader: THREE.TextureLoader;
+  private renderDistance: number = RENDER_DISTANCE;
+  private chunksPerFrame: number = CHUNKS_PER_FRAME;
 
   constructor(scene: THREE.Scene, seed: number = 42) {
     this.scene = scene;
@@ -30,6 +32,14 @@ export class World {
       tex.colorSpace = THREE.SRGBColorSpace;
       this.textureAtlas.set(path, tex);
     }
+  }
+
+  setRenderDistance(distance: number): void {
+    this.renderDistance = distance;
+  }
+
+  setChunksPerFrame(count: number): void {
+    this.chunksPerFrame = count;
   }
 
   private chunkKey(cx: number, cy: number, cz: number): string {
@@ -135,8 +145,8 @@ export class World {
     const neededChunks = new Set<string>();
     const missingChunks: { cx: number; cy: number; cz: number; dist: number }[] = [];
 
-    for (let dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
-      for (let dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
+    for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
+      for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
         for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
           const cx = pcx + dx;
           const cy = pcy + dy;
@@ -154,7 +164,7 @@ export class World {
 
     // Sort by distance (closest first), then generate at most N per frame
     missingChunks.sort((a, b) => a.dist - b.dist);
-    const toGenerate = missingChunks.slice(0, CHUNKS_PER_FRAME);
+    const toGenerate = missingChunks.slice(0, this.chunksPerFrame);
 
     for (const { cx, cy, cz } of toGenerate) {
       const chunk = this.generateChunk(cx, cy, cz);

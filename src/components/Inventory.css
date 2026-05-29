@@ -190,3 +190,42 @@
   text-shadow: 1px 1px 0 #000;
   font-family: 'Courier New', monospace;
 }
+
+/* ── Settings panel ── */
+.settings-panel {
+  min-width: 300px;
+}
+
+.settings-row {
+  margin: 10px 0;
+}
+
+.settings-row label {
+  display: block;
+  font-size: 12px;
+  font-weight: bold;
+  color: #404040;
+  margin-bottom: 4px;
+  text-shadow: 1px 1px 0 #fff;
+}
+
+.settings-row input[type="range"] {
+  width: 100%;
+  height: 8px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #8b8b8b;
+  border: 2px solid #555;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #555;
+  border: 2px solid #fff;
+  cursor: pointer;
+}
