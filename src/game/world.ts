@@ -42,6 +42,10 @@ export class World {
     this.chunksPerFrame = count;
   }
 
+  getTexture(path: string): THREE.Texture | null {
+    return this.textureAtlas.get(path) ?? null;
+  }
+
   private chunkKey(cx: number, cy: number, cz: number): string {
     return `${cx},${cy},${cz}`;
   }

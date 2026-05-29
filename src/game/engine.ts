@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { World } from './world';
 import { Player } from './player';
+import { ParticleManager } from './particles';
+import { BLOCK_DATA } from './blocks';
 
 export interface EngineSettings {
   fpsLimit: number;      // 0 = unlimited
@@ -14,6 +16,7 @@ export class GameEngine {
   private camera: THREE.PerspectiveCamera;
   private world: World;
   private player: Player;
+  private particles: ParticleManager;
   private lastTime: number = 0;
   private lastFrameTime: number = 0;
   private running: boolean = false;
@@ -56,9 +59,18 @@ export class GameEngine {
     this.scene.add(hemiLight);
 
     this.world = new World(this.scene);
+    this.particles = new ParticleManager(this.scene);
     this.player = new Player(this.camera, this.world);
 
     this.scene.add(this.player.getHighlightMesh());
+
+    // Particle callback on block break
+    this.player.setOnBlockBreak((wx, wy, wz, blockType) => {
+      const texPath = BLOCK_DATA[blockType]?.texture;
+      if (!texPath) return;
+      const tex = this.world.getTexture(texPath);
+      this.particles.spawnBlockBreak(wx, wy, wz, tex);
+    });
 
     window.addEventListener('resize', this.onResize.bind(this));
 
@@ -126,6 +138,7 @@ export class GameEngine {
 
     this.player.update(dt);
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
+    this.particles.update(dt);
 
     this.renderer.render(this.scene, this.camera);
 
@@ -140,6 +153,7 @@ export class GameEngine {
 
   dispose(): void {
     this.running = false;
+    this.particles.dispose();
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);
   }

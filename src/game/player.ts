@@ -40,6 +40,7 @@ export class Player {
   // Inventory integration
   private getSelectedBlock: () => BlockType = () => BlockType.DIRT;
   public uiOpen: boolean = false;
+  private onBlockBreak: ((wx: number, wy: number, wz: number, blockType: BlockType) => void) | null = null;
 
   constructor(camera: THREE.PerspectiveCamera, world: World) {
     this.camera = camera;
@@ -60,6 +61,10 @@ export class Player {
 
   setGetSelectedBlock(fn: () => BlockType): void {
     this.getSelectedBlock = fn;
+  }
+
+  setOnBlockBreak(fn: (wx: number, wy: number, wz: number, blockType: BlockType) => void): void {
+    this.onBlockBreak = fn;
   }
 
   getHighlightMesh(): THREE.LineSegments {
@@ -255,6 +260,7 @@ export class Player {
       const hit = this.world.raycast(this.camera.position, dir, 7);
       if (hit && hit.blockType !== BlockType.AIR) {
         this.world.setBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, BlockType.AIR);
+        this.onBlockBreak?.(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, hit.blockType);
         this.lastBreakTime = now;
       }
     }
