@@ -601,7 +601,7 @@ export function Game() {
   // Scroll wheel
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
-      if (isBackpackOpenRef.current) return;
+      if (isBackpackOpenRef.current || isChatOpenRef.current) return;
       setSelectedSlot(prev => {
         const dir = e.deltaY > 0 ? 1 : -1;
         return ((prev + dir) % 9 + 9) % 9;

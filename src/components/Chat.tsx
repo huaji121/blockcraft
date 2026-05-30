@@ -13,7 +13,8 @@ interface Props {
   onClose: () => void;
 }
 
-const MESSAGE_LIFETIME = 10_000; // messages older than this are hidden
+const MESSAGE_LIFETIME = 10_000;
+const MAX_RECENT_SHOWN = 5; // max messages visible when chat is closed
 
 export function Chat({ messages, onSend, visible, onClose }: Props) {
   const [input, setInput] = useState('');
@@ -21,20 +22,17 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
 
-  // Update "now" every second to fade old messages
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Focus input when chat opens
   useEffect(() => {
     if (visible) {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -51,10 +49,13 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
     onClose();
   };
 
-  // Filter recent messages
-  const recentMessages = messages.filter(m => now - m.time < MESSAGE_LIFETIME);
-  const showChat = visible || recentMessages.length > 0;
+  // When closed: show only recent messages (fading)
+  // When open: show all messages
+  const displayMessages = visible
+    ? messages
+    : messages.filter(m => now - m.time < MESSAGE_LIFETIME).slice(-MAX_RECENT_SHOWN);
 
+  const showChat = visible || displayMessages.length > 0;
   if (!showChat) return null;
 
   return (
@@ -72,7 +73,7 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
       <div
         ref={scrollRef}
         style={{
-          maxHeight: 200,
+          maxHeight: visible ? 300 : 120,
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -80,24 +81,28 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
           padding: '4px 0',
         }}
       >
-        {recentMessages.map((msg, i) => {
+        {displayMessages.map((msg, i) => {
           const age = now - msg.time;
-          const opacity = age > MESSAGE_LIFETIME * 0.7
-            ? Math.max(0, 1 - (age - MESSAGE_LIFETIME * 0.7) / (MESSAGE_LIFETIME * 0.3))
-            : 1;
+          const opacity = visible ? 1
+            : age > MESSAGE_LIFETIME * 0.7
+              ? Math.max(0, 1 - (age - MESSAGE_LIFETIME * 0.7) / (MESSAGE_LIFETIME * 0.3))
+              : 1;
 
           return (
-            <div key={i} style={{
+            <div key={`${msg.sender}-${msg.time}-${i}`} style={{
               background: 'rgba(0, 0, 0, 0.45)',
               padding: '2px 6px',
               borderRadius: 2,
-              color: '#fff',
+              color: msg.sender === 'System' ? '#ffff55' : '#fff',
               textShadow: '1px 1px 0 #000',
               opacity,
               lineHeight: '18px',
               wordBreak: 'break-word',
             }}>
-              <span style={{ color: '#ff5555', fontWeight: 'bold' }}>&lt;{msg.sender}&gt;</span>
+              <span style={{
+                color: msg.sender === 'System' ? '#ffff55' : '#ff5555',
+                fontWeight: 'bold',
+              }}>&lt;{msg.sender}&gt;</span>
               {' '}{msg.text}
             </div>
           );
@@ -124,7 +129,7 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
               padding: '4px 6px',
               outline: 'none',
             }}
-            placeholder="Type a message..."
+            placeholder="Type a message or /help..."
           />
         </form>
       )}
