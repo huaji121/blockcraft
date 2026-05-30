@@ -311,12 +311,16 @@ export class Player {
       const selectedItemId = this.getSelectedItemId();
       if (selectedItemId === EMPTY_ITEM_ID) return;
 
-      // Spawn egg: spawn entity at look target
+      // Spawn egg: spawn entity at crosshair hit point
       if (selectedItemId === SPAWN_EGG_ID && this.entityManager) {
         const hit = this.world.raycast(this.camera.position, dir, 7);
         if (hit) {
-          const spawnPos = hit.blockPos.clone().add(hit.normal);
-          spawnPos.y += 0.1;
+          // Spawn on top of the hit block surface
+          const spawnPos = new THREE.Vector3(
+            hit.blockPos.x + 0.5,
+            hit.blockPos.y + 1.01,
+            hit.blockPos.z + 0.5,
+          );
           this.entityManager.spawn(spawnPos);
           this.lastPlaceTime = now;
         }
