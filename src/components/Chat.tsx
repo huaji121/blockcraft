@@ -94,7 +94,7 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
       <div
         ref={scrollRef}
         style={{
-          maxHeight: `${MAX_LINES * 18}px`,
+          maxHeight: visible ? '60vh' : `${MAX_LINES * 18}px`,
           overflowY: 'auto',
           background: 'rgba(0, 0, 0, 0.3)',
           borderRadius: 2,
