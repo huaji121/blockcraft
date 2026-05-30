@@ -232,7 +232,7 @@ export function Game() {
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<GameSettings>({
     fpsLimit: 0,
-    chunksPerFrame: 8,
+    chunksPerFrame: 1,
     renderDistance: 8,
     fogDensity: 40,
   });
