@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Chunk } from './chunk';
 import { TerrainNoise } from './noise';
 import { BlockType, BLOCK_DATA, ALL_BLOCKS } from './blocks';
-import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, CHUNKS_PER_FRAME } from './constants';
+import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME, MESH_UPLOADS_PER_FRAME } from './constants';
 import { TextureAtlas } from './atlas';
 
 export class World {
@@ -14,14 +14,17 @@ export class World {
   private loader: THREE.TextureLoader;
   private renderDistance: number = RENDER_DISTANCE;
   private chunksPerFrame: number = CHUNKS_PER_FRAME;
+  private meshUploadsPerFrame: number = MESH_UPLOADS_PER_FRAME;
   private ready: boolean = false;
+
+  // Mesh upload queue: chunks waiting to have their meshes added to scene
+  private meshQueue: Chunk[] = [];
 
   constructor(scene: THREE.Scene, seed: number = 42) {
     this.scene = scene;
     this.noise = new TerrainNoise(seed);
     this.loader = new THREE.TextureLoader();
 
-    // Collect all texture paths
     const paths = new Set<string>();
     for (const bt of ALL_BLOCKS) {
       const data = BLOCK_DATA[bt];
@@ -33,17 +36,12 @@ export class World {
       }
     }
 
-    // Build atlas for chunk rendering
     this.atlas = new TextureAtlas(this.loader);
     this.atlas.build([...paths], () => {
       this.ready = true;
-      // Rebuild all existing chunks with atlas
-      for (const chunk of this.chunks.values()) {
-        chunk.dirty = true;
-      }
+      for (const chunk of this.chunks.values()) chunk.dirty = true;
     });
 
-    // Load individual textures for particles
     for (const path of paths) {
       const tex = this.loader.load(path);
       tex.magFilter = THREE.NearestFilter;
@@ -54,17 +52,9 @@ export class World {
     }
   }
 
-  setRenderDistance(distance: number): void {
-    this.renderDistance = distance;
-  }
-
-  setChunksPerFrame(count: number): void {
-    this.chunksPerFrame = count;
-  }
-
-  getTexture(path: string): THREE.Texture | null {
-    return this.individualTextures.get(path) ?? null;
-  }
+  setRenderDistance(distance: number): void { this.renderDistance = distance; }
+  setChunksPerFrame(count: number): void { this.chunksPerFrame = count; }
+  getTexture(path: string): THREE.Texture | null { return this.individualTextures.get(path) ?? null; }
 
   private chunkKey(cx: number, cy: number, cz: number): string {
     return `${cx},${cy},${cz}`;
@@ -80,7 +70,6 @@ export class World {
     const cz = Math.floor(wz / CHUNK_SIZE);
     const chunk = this.getChunk(cx, cy, cz);
     if (!chunk) return BlockType.AIR;
-
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
@@ -91,16 +80,13 @@ export class World {
     const cx = Math.floor(wx / CHUNK_SIZE);
     const cy = Math.floor(wy / CHUNK_SIZE);
     const cz = Math.floor(wz / CHUNK_SIZE);
-    let chunk = this.getChunk(cx, cy, cz);
+    const chunk = this.getChunk(cx, cy, cz);
     if (!chunk) return;
-
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     chunk.setBlock(lx, ly, lz, type);
-
     this.rebuildChunk(chunk);
-
     if (lx === 0) this.rebuildNeighborChunk(cx - 1, cy, cz);
     if (lx === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx + 1, cy, cz);
     if (ly === 0) this.rebuildNeighborChunk(cx, cy - 1, cz);
@@ -128,7 +114,6 @@ export class World {
 
         for (let y = 0; y < CHUNK_SIZE; y++) {
           const wy = worldY0 + y;
-
           if (wy < surfaceHeight - 3) {
             chunk.setBlock(x, y, z, BlockType.STONE);
           } else if (wy < surfaceHeight) {
@@ -139,20 +124,29 @@ export class World {
         }
       }
     }
-
     return chunk;
   }
 
   private rebuildChunk(chunk: Chunk): void {
-    for (const mesh of chunk.meshes) {
-      this.scene.remove(mesh);
-    }
-
+    for (const mesh of chunk.meshes) this.scene.remove(mesh);
     chunk.buildMeshes(this.atlas, (wx, wy, wz) => this.getBlock(wx, wy, wz));
+    for (const mesh of chunk.meshes) this.scene.add(mesh);
+  }
 
-    for (const mesh of chunk.meshes) {
-      this.scene.add(mesh);
+  /** Spiral chunk order: yields (dx, dz) from center outward */
+  private *spiralOrder(radius: number): Generator<[number, number]> {
+    yield [0, 0];
+    for (let r = 1; r <= radius; r++) {
+      for (let x = -r; x <= r; x++) yield [x, -r];
+      for (let z = -r + 1; z <= r; z++) yield [r, z];
+      for (let x = r - 1; x >= -r; x--) yield [x, r];
+      for (let z = r - 1; z >= -r + 1; z--) yield [-r, z];
     }
+  }
+
+  /** Chebyshev distance (max of axis distances) */
+  private chebyshev(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
+    return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
   }
 
   update(playerX: number, playerY: number, playerZ: number): void {
@@ -163,48 +157,52 @@ export class World {
     const pcz = Math.floor(playerZ / CHUNK_SIZE);
 
     const neededChunks = new Set<string>();
-    const missingChunks: { cx: number; cy: number; cz: number; dist: number }[] = [];
+    const toGenerate: { cx: number; cy: number; cz: number; dist: number }[] = [];
 
-    for (let dx = -this.renderDistance; dx <= this.renderDistance; dx++) {
-      for (let dz = -this.renderDistance; dz <= this.renderDistance; dz++) {
-        for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
-          const cx = pcx + dx;
-          const cy = pcy + dy;
-          const cz = pcz + dz;
-          const key = this.chunkKey(cx, cy, cz);
-          neededChunks.add(key);
+    // Spiral loading: collect missing chunks in spiral order
+    for (const [dx, dz] of this.spiralOrder(this.renderDistance)) {
+      for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
+        const cx = pcx + dx;
+        const cy = pcy + dy;
+        const cz = pcz + dz;
+        const key = this.chunkKey(cx, cy, cz);
+        neededChunks.add(key);
 
-          if (!this.chunks.has(key)) {
-            const dist = dx * dx + dy * dy + dz * dz;
-            missingChunks.push({ cx, cy, cz, dist });
-          }
+        if (!this.chunks.has(key)) {
+          const dist = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
+          toGenerate.push({ cx, cy, cz, dist });
         }
       }
     }
 
-    missingChunks.sort((a, b) => a.dist - b.dist);
-    const toGenerate = missingChunks.slice(0, this.chunksPerFrame);
-
-    for (const { cx, cy, cz } of toGenerate) {
+    // Generate at most chunksPerFrame new chunks (already sorted by spiral = distance)
+    const genBatch = toGenerate.slice(0, this.chunksPerFrame);
+    for (const { cx, cy, cz } of genBatch) {
       const chunk = this.generateChunk(cx, cy, cz);
       const key = this.chunkKey(cx, cy, cz);
       this.chunks.set(key, chunk);
       this.rebuildChunk(chunk);
     }
 
+    // Rebuild dirty chunks
     for (const chunk of this.chunks.values()) {
-      if (chunk.dirty) {
-        this.rebuildChunk(chunk);
-      }
+      if (chunk.dirty) this.rebuildChunk(chunk);
     }
 
+    // Unload distant chunks (hysteresis: unload distance = render distance + buffer)
+    const unloadDist = this.renderDistance + UNLOAD_HYSTERESIS;
     for (const [key, chunk] of this.chunks) {
       if (!neededChunks.has(key)) {
-        for (const mesh of chunk.meshes) {
-          this.scene.remove(mesh);
+        // Check if truly beyond hysteresis distance
+        const dist = this.chebyshev(
+          pcx, pcy, pcz,
+          chunk.cx, chunk.cy, chunk.cz
+        );
+        if (dist > unloadDist) {
+          for (const mesh of chunk.meshes) this.scene.remove(mesh);
+          chunk.disposeMeshes();
+          this.chunks.delete(key);
         }
-        chunk.disposeMeshes();
-        this.chunks.delete(key);
       }
     }
   }
@@ -218,9 +216,7 @@ export class World {
     const tMax = new THREE.Vector3();
     const tDelta = new THREE.Vector3();
     const blockPos = new THREE.Vector3(
-      Math.floor(origin.x),
-      Math.floor(origin.y),
-      Math.floor(origin.z)
+      Math.floor(origin.x), Math.floor(origin.y), Math.floor(origin.z)
     );
     const normal = new THREE.Vector3();
 
@@ -228,59 +224,34 @@ export class World {
     step.y = direction.y > 0 ? 1 : -1;
     step.z = direction.z > 0 ? 1 : -1;
 
-    tMax.x = direction.x !== 0
-      ? ((direction.x > 0 ? Math.floor(origin.x) + 1 : Math.floor(origin.x)) - origin.x) / direction.x
-      : Infinity;
-    tMax.y = direction.y !== 0
-      ? ((direction.y > 0 ? Math.floor(origin.y) + 1 : Math.floor(origin.y)) - origin.y) / direction.y
-      : Infinity;
-    tMax.z = direction.z !== 0
-      ? ((direction.z > 0 ? Math.floor(origin.z) + 1 : Math.floor(origin.z)) - origin.z) / direction.z
-      : Infinity;
+    tMax.x = direction.x !== 0 ? ((direction.x > 0 ? Math.floor(origin.x) + 1 : Math.floor(origin.x)) - origin.x) / direction.x : Infinity;
+    tMax.y = direction.y !== 0 ? ((direction.y > 0 ? Math.floor(origin.y) + 1 : Math.floor(origin.y)) - origin.y) / direction.y : Infinity;
+    tMax.z = direction.z !== 0 ? ((direction.z > 0 ? Math.floor(origin.z) + 1 : Math.floor(origin.z)) - origin.z) / direction.z : Infinity;
 
     tDelta.x = direction.x !== 0 ? Math.abs(1 / direction.x) : Infinity;
     tDelta.y = direction.y !== 0 ? Math.abs(1 / direction.y) : Infinity;
     tDelta.z = direction.z !== 0 ? Math.abs(1 / direction.z) : Infinity;
 
     let distance = 0;
-
     while (distance < maxDistance) {
       const block = this.getBlock(blockPos.x, blockPos.y, blockPos.z);
       if (block !== BlockType.AIR) {
-        return {
-          blockPos: blockPos.clone(),
-          normal: normal.clone(),
-          blockType: block,
-        };
+        return { blockPos: blockPos.clone(), normal: normal.clone(), blockType: block };
       }
-
       if (tMax.x < tMax.y) {
         if (tMax.x < tMax.z) {
-          distance = tMax.x;
-          blockPos.x += step.x;
-          tMax.x += tDelta.x;
-          normal.set(-step.x, 0, 0);
+          distance = tMax.x; blockPos.x += step.x; tMax.x += tDelta.x; normal.set(-step.x, 0, 0);
         } else {
-          distance = tMax.z;
-          blockPos.z += step.z;
-          tMax.z += tDelta.z;
-          normal.set(0, 0, -step.z);
+          distance = tMax.z; blockPos.z += step.z; tMax.z += tDelta.z; normal.set(0, 0, -step.z);
         }
       } else {
         if (tMax.y < tMax.z) {
-          distance = tMax.y;
-          blockPos.y += step.y;
-          tMax.y += tDelta.y;
-          normal.set(0, -step.y, 0);
+          distance = tMax.y; blockPos.y += step.y; tMax.y += tDelta.y; normal.set(0, -step.y, 0);
         } else {
-          distance = tMax.z;
-          blockPos.z += step.z;
-          tMax.z += tDelta.z;
-          normal.set(0, 0, -step.z);
+          distance = tMax.z; blockPos.z += step.z; tMax.z += tDelta.z; normal.set(0, 0, -step.z);
         }
       }
     }
-
     return null;
   }
 }
