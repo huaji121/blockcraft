@@ -27,6 +27,7 @@ export class GameEngine {
   private running: boolean = false;
   private container: HTMLElement;
   private settings: EngineSettings = { fpsLimit: 0, chunksPerFrame: 8, renderDistance: 8 };
+  private wireframeEnabled: boolean = false;
 
   // FPS tracking
   public fps: number = 0;
@@ -99,6 +100,23 @@ export class GameEngine {
 
   getWorld(): World {
     return this.world;
+  }
+
+  setWireframe(enabled: boolean): void {
+    this.wireframeEnabled = enabled;
+    this.applyWireframe();
+  }
+
+  private applyWireframe(): void {
+    const enabled = this.wireframeEnabled;
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        const mat = obj.material;
+        if (mat instanceof THREE.Material) {
+          mat.wireframe = enabled;
+        }
+      }
+    });
   }
 
   updateSettings(settings: EngineSettings): void {
@@ -176,6 +194,9 @@ export class GameEngine {
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
     this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z), this.player.position);
     this.particles.update(dt);
+
+    // Re-apply wireframe after chunk rebuilds
+    if (this.wireframeEnabled) this.applyWireframe();
 
     this.renderer.render(this.scene, this.camera);
 

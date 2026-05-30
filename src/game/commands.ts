@@ -7,6 +7,7 @@ export interface CommandContext {
   clearInventory: () => void;
   killEntities: () => void;
   getPlayerPos: () => { x: number; y: number; z: number };
+  setWireframe: (enabled: boolean) => void;
 }
 
 interface Command {
@@ -106,6 +107,29 @@ const commands: Command[] = [
     execute: (_args, ctx) => {
       ctx.killEntities();
       ctx.addMessage('System', 'All entities killed');
+    },
+  },
+  {
+    name: 'debug',
+    description: 'Toggle debug rendering modes',
+    usage: '/debug enablePolygonMode true|false',
+    execute: (args, ctx) => {
+      if (args.length < 2) {
+        ctx.addMessage('System', 'Usage: /debug enablePolygonMode true|false');
+        return;
+      }
+      const key = args[0].toLowerCase();
+      const value = args[1].toLowerCase();
+      if (key === 'enablepolygonmode') {
+        if (value === 'true' || value === 'false') {
+          ctx.setWireframe(value === 'true');
+          ctx.addMessage('System', `Wireframe mode: ${value}`);
+        } else {
+          ctx.addMessage('System', 'Value must be true or false');
+        }
+      } else {
+        ctx.addMessage('System', `Unknown debug option: ${key}`);
+      }
     },
   },
 ];

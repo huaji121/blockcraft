@@ -587,6 +587,9 @@ export function Game() {
           const p = player.position;
           return { x: p.x, y: p.y, z: p.z };
         },
+        setWireframe: (enabled: boolean) => {
+          engine.setWireframe(enabled);
+        },
       });
     } else {
       addChatMessage('Player', text);
