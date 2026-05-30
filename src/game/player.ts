@@ -42,7 +42,17 @@ export class Player {
 
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;
-  public uiOpen: boolean = false;
+  private _uiOpen: boolean = false;
+
+  get uiOpen(): boolean { return this._uiOpen; }
+  set uiOpen(value: boolean) {
+    if (this._uiOpen === value) return;
+    this._uiOpen = value;
+    if (value) {
+      // Clear all held keys when UI opens to stop movement
+      this.keys.clear();
+    }
+  }
   private onBlockBreak: ((wx: number, wy: number, wz: number, blockType: BlockType) => void) | null = null;
 
   // Entity interaction
@@ -82,7 +92,10 @@ export class Player {
   }
 
   private setupControls(): void {
-    document.addEventListener('keydown', (e) => this.keys.add(e.code));
+    document.addEventListener('keydown', (e) => {
+      if (this.uiOpen) return;
+      this.keys.add(e.code);
+    });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
     document.addEventListener('mousemove', (e) => {

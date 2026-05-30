@@ -8,6 +8,7 @@ import { Backpack, DELETE_SLOT_INDEX } from './Backpack';
 import { BlockCube } from './BlockCube';
 import { DebugOverlay } from './DebugOverlay';
 import { Settings, type GameSettings } from './Settings';
+import { Chat, type ChatMessage } from './Chat';
 import './Inventory.css';
 
 interface InvState {
@@ -227,6 +228,10 @@ export function Game() {
     renderDistance: 8,
   });
 
+  // Chat
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   // Position + FPS tracker
   useEffect(() => {
     let rafId: number;
@@ -268,6 +273,10 @@ export function Game() {
   isBackpackOpenRef.current = isBackpackOpen;
   const hoveredSlotRef = useRef(hoveredSlot);
   hoveredSlotRef.current = hoveredSlot;
+  const isChatOpenRef = useRef(isChatOpen);
+  isChatOpenRef.current = isChatOpen;
+  const showSettingsRef = useRef(showSettings);
+  showSettingsRef.current = showSettings;
 
   // Track mouse position for held item
   useEffect(() => {
@@ -399,14 +408,42 @@ export function Game() {
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    engine.getPlayer().uiOpen = isBackpackOpen || showSettings;
-  }, [isBackpackOpen, showSettings]);
+    engine.getPlayer().uiOpen = isBackpackOpen || showSettings || isChatOpen;
+  }, [isBackpackOpen, showSettings, isChatOpen]);
 
   // Keyboard handler using key binding system
   useEffect(() => {
     const kb = DEFAULT_KEYBINDS;
 
     const onKey = (e: KeyboardEvent) => {
+      // ESC: close UIs in priority order (chat > backpack > settings), or open settings
+      if (isKey(e, kb.settings)) {
+        e.preventDefault();
+        if (isChatOpenRef.current) {
+          setIsChatOpen(false);
+          setTimeout(() => engineRef.current?.requestPointerLock(), 50);
+        } else if (isBackpackOpenRef.current) {
+          if (heldItemRef.current && !isSlotEmpty(heldItemRef.current)) {
+            dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItemRef.current.itemId, count: heldItemRef.current.count });
+            setHeldItem(null);
+          }
+          setIsBackpackOpen(false);
+          setTimeout(() => engineRef.current?.requestPointerLock(), 50);
+        } else if (showSettingsRef.current) {
+          setShowSettings(false);
+          setTimeout(() => engineRef.current?.requestPointerLock(), 50);
+        } else {
+          engineRef.current?.exitPointerLock();
+          setShowSettings(true);
+        }
+        return;
+      }
+
+      // When chat is open, block all other keybindings
+      if (isChatOpenRef.current) {
+        return;
+      }
+
       // Open inventory
       if (isKey(e, kb.openInventory)) {
         e.preventDefault();
@@ -433,13 +470,11 @@ export function Game() {
         return;
       }
 
-      // Settings
-      if (isKey(e, kb.settings)) {
+      // Open chat (T) - only when backpack is closed
+      if (isKey(e, kb.openChat) && !isChatOpen && !isBackpackOpenRef.current) {
         e.preventDefault();
-        setShowSettings(prev => {
-          if (!prev) engineRef.current?.exitPointerLock();
-          return !prev;
-        });
+        setIsChatOpen(true);
+        engineRef.current?.exitPointerLock();
         return;
       }
 
@@ -488,6 +523,16 @@ export function Game() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Chat handlers
+  const handleChatSend = useCallback((text: string) => {
+    setChatMessages(prev => [...prev, { sender: 'Player', text, time: Date.now() }]);
+  }, []);
+
+  const handleChatClose = useCallback(() => {
+    setIsChatOpen(false);
+    setTimeout(() => engineRef.current?.requestPointerLock(), 50);
   }, []);
 
   // Scroll wheel
@@ -563,6 +608,13 @@ export function Game() {
           }}
         />
       )}
+
+      <Chat
+        messages={chatMessages}
+        onSend={handleChatSend}
+        visible={isChatOpen}
+        onClose={handleChatClose}
+      />
 
       {/* Debug overlay */}
       {showDebug && (
