@@ -14,8 +14,9 @@ interface Props {
 }
 
 const MAX_LINES = 10;
-const IDLE_FADE_DELAY = 10_000; // start fading after 10s of no new messages
-const FADE_DURATION = 3_000;    // fade over 3s
+const IDLE_FADE_DELAY = 10_000;
+const FADE_DURATION = 3_000;
+const MAX_HISTORY = 50;
 
 export function Chat({ messages, onSend, visible, onClose }: Props) {
   const [input, setInput] = useState('');
@@ -23,6 +24,11 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastMessageTimeRef = useRef(Date.now());
   const [fadeOpacity, setFadeOpacity] = useState(1);
+
+  // Chat history for up/down arrow navigation
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef(-1); // -1 = not navigating
+  const savedInputRef = useRef('');
 
   // Track last message time
   useEffect(() => {
@@ -52,6 +58,8 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
 
   useEffect(() => {
     if (visible) {
+      historyIndexRef.current = -1;
+      savedInputRef.current = '';
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
@@ -66,10 +74,46 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
     e.preventDefault();
     const text = input.trim();
     if (text) {
+      // Add to history (avoid duplicates at the end)
+      const hist = historyRef.current;
+      if (hist.length === 0 || hist[hist.length - 1] !== text) {
+        hist.push(text);
+        if (hist.length > MAX_HISTORY) hist.shift();
+      }
       onSend(text);
       setInput('');
     }
+    historyIndexRef.current = -1;
+    savedInputRef.current = '';
     onClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const hist = historyRef.current;
+    if (hist.length === 0) return;
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (historyIndexRef.current === -1) {
+        // Save current input before navigating
+        savedInputRef.current = input;
+        historyIndexRef.current = hist.length - 1;
+      } else if (historyIndexRef.current > 0) {
+        historyIndexRef.current--;
+      }
+      setInput(hist[historyIndexRef.current]);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndexRef.current === -1) return;
+      if (historyIndexRef.current < hist.length - 1) {
+        historyIndexRef.current++;
+        setInput(hist[historyIndexRef.current]);
+      } else {
+        // Back to current input
+        historyIndexRef.current = -1;
+        setInput(savedInputRef.current);
+      }
+    }
   };
 
   // Show last MAX_LINES messages
@@ -128,6 +172,7 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             style={{
               width: '100%',
               boxSizing: 'border-box',
