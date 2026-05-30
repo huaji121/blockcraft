@@ -176,7 +176,8 @@ export class GameEngine {
 
   private animate(): void {
     if (!this.running) return;
-    requestAnimationFrame(() => this.animate());
+    // Use setTimeout to decouple from display refresh rate
+    setTimeout(() => this.animate(), 0);
 
     const now = performance.now();
 
