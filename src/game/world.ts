@@ -124,12 +124,14 @@ export class World {
         }
       }
     }
+    chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     return chunk;
   }
 
   private rebuildChunk(chunk: Chunk): void {
     for (const mesh of chunk.meshes) this.scene.remove(mesh);
     chunk.buildMeshes(this.atlas, (wx, wy, wz) => this.getBlock(wx, wy, wz));
+    chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     for (const mesh of chunk.meshes) this.scene.add(mesh);
   }
 
@@ -182,11 +184,31 @@ export class World {
       const key = this.chunkKey(cx, cy, cz);
       this.chunks.set(key, chunk);
       this.rebuildChunk(chunk);
+
+      // Mark neighboring chunks as dirty so their boundary faces update
+      const neighbors: [number, number, number][] = [
+        [cx - 1, cy, cz], [cx + 1, cy, cz],
+        [cx, cy - 1, cz], [cx, cy + 1, cz],
+        [cx, cy, cz - 1], [cx, cy, cz + 1],
+      ];
+      for (const [nx, ny, nz] of neighbors) {
+        const nChunk = this.getChunk(nx, ny, nz);
+        if (nChunk) nChunk.dirty = true;
+      }
     }
 
     // Rebuild dirty chunks
     for (const chunk of this.chunks.values()) {
       if (chunk.dirty) this.rebuildChunk(chunk);
+    }
+
+    // BFS occlusion culling: only show chunks reachable through non-solid faces
+    const visible = this.computeVisibleChunks(pcx, pcy, pcz);
+    for (const [key, chunk] of this.chunks) {
+      const isVisible = visible.has(key);
+      for (const mesh of chunk.meshes) {
+        mesh.visible = isVisible;
+      }
     }
 
     // Unload distant chunks (hysteresis: unload distance = render distance + buffer)
@@ -205,6 +227,54 @@ export class World {
         }
       }
     }
+  }
+
+  /** BFS from player chunk through non-solid faces to find visible chunks */
+  private computeVisibleChunks(pcx: number, pcy: number, pcz: number): Set<string> {
+    const visible = new Set<string>();
+    const queue: [number, number, number][] = [[pcx, pcy, pcz]];
+    const maxBfsDist = this.renderDistance + 1;
+
+    // Face directions and their opposite indices
+    // 0=+Y, 1=-Y, 2=+X, 3=-X, 4=+Z, 5=-Z
+    const dirs: [number, number, number][] = [
+      [0, 1, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
+    ];
+    const opposite = [1, 0, 3, 2, 5, 4];
+
+    let head = 0;
+    while (head < queue.length) {
+      const [cx, cy, cz] = queue[head++];
+      const key = this.chunkKey(cx, cy, cz);
+      if (visible.has(key)) continue;
+      visible.add(key);
+
+      const chunk = this.getChunk(cx, cy, cz);
+
+      for (let face = 0; face < 6; face++) {
+        const [dx, dy, dz] = dirs[face];
+        const nx = cx + dx;
+        const ny = cy + dy;
+        const nz = cz + dz;
+
+        // Distance check
+        if (Math.abs(nx - pcx) > maxBfsDist || Math.abs(nz - pcz) > maxBfsDist) continue;
+        if (Math.abs(ny - pcy) > RENDER_DISTANCE_Y + 1) continue;
+
+        const nKey = this.chunkKey(nx, ny, nz);
+        if (visible.has(nKey)) continue;
+        if (!this.chunks.has(nKey)) continue;
+
+        // Occlusion: stop if exit face or entry face is solid
+        if (chunk && chunk.faceSolid[face]) continue;
+        const neighborChunk = this.getChunk(nx, ny, nz);
+        if (neighborChunk && neighborChunk.faceSolid[opposite[face]]) continue;
+
+        queue.push([nx, ny, nz]);
+      }
+    }
+
+    return visible;
   }
 
   raycast(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number = 8): {

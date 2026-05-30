@@ -10,6 +10,8 @@ export class Chunk {
   public cz: number;
   public meshes: THREE.Mesh[] = [];
   public dirty: boolean = true;
+  // Face solidity: [0]=+Y, [1]=-Y, [2]=+X, [3]=-X, [4]=+Z, [5]=-Z
+  public faceSolid: boolean[] = [false, false, false, false, false, false];
 
   constructor(cx: number, cy: number, cz: number) {
     this.cx = cx;
@@ -33,6 +35,74 @@ export class Chunk {
     if (x < 0 || x >= CHUNK_SIZE || y < 0 || y >= CHUNK_SIZE || z < 0 || z >= CHUNK_SIZE) return;
     this.blocks[this.idx(x, y, z)] = type;
     this.dirty = true;
+  }
+
+  /** Precompute whether each face is completely solid (for occlusion culling).
+   *  A face is "solid" only if ALL blocks on that face AND the adjacent
+   *  neighbor blocks are non-transparent. This ensures BFS correctly
+   *  propagates when a neighbor chunk's edge block changes. */
+  computeFaceSolidity(
+    getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType
+  ): void {
+    const S = CHUNK_SIZE;
+    const wx0 = this.cx * S;
+    const wy0 = this.cy * S;
+    const wz0 = this.cz * S;
+
+    const isSolidFace = (
+      faceBlocks: { bx: number; by: number; bz: number; nx: number; ny: number; nz: number }[]
+    ): boolean => {
+      for (const { bx, by, bz, nx, ny, nz } of faceBlocks) {
+        const block = this.blocks[this.idx(bx, by, bz)];
+        if (BLOCK_DATA[block].transparent) return false;
+        const neighbor = getNeighborBlock(nx, ny, nz);
+        if (BLOCK_DATA[neighbor].transparent) return false;
+      }
+      return true;
+    };
+
+    // +Y face (y = S-1): check block at y=S-1 and neighbor at y=S
+    this.faceSolid[0] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const x = i % S, z = Math.floor(i / S);
+        return { bx: x, by: S - 1, bz: z, nx: wx0 + x, ny: wy0 + S, nz: wz0 + z };
+      })
+    );
+    // -Y face (y = 0): check block at y=0 and neighbor at y=-1
+    this.faceSolid[1] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const x = i % S, z = Math.floor(i / S);
+        return { bx: x, by: 0, bz: z, nx: wx0 + x, ny: wy0 - 1, nz: wz0 + z };
+      })
+    );
+    // +X face (x = S-1)
+    this.faceSolid[2] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const y = i % S, z = Math.floor(i / S);
+        return { bx: S - 1, by: y, bz: z, nx: wx0 + S, ny: wy0 + y, nz: wz0 + z };
+      })
+    );
+    // -X face (x = 0)
+    this.faceSolid[3] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const y = i % S, z = Math.floor(i / S);
+        return { bx: 0, by: y, bz: z, nx: wx0 - 1, ny: wy0 + y, nz: wz0 + z };
+      })
+    );
+    // +Z face (z = S-1)
+    this.faceSolid[4] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const x = i % S, y = Math.floor(i / S);
+        return { bx: x, by: y, bz: S - 1, nx: wx0 + x, ny: wy0 + y, nz: wz0 + S };
+      })
+    );
+    // -Z face (z = 0)
+    this.faceSolid[5] = isSolidFace(
+      Array.from({ length: S * S }, (_, i) => {
+        const x = i % S, y = Math.floor(i / S);
+        return { bx: x, by: y, bz: 0, nx: wx0 + x, ny: wy0 + y, nz: wz0 - 1 };
+      })
+    );
   }
 
   private getTextureForFace(block: BlockType, faceDir: [number, number, number]): string {
