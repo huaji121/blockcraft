@@ -13,19 +13,42 @@ interface Props {
   onClose: () => void;
 }
 
-const MESSAGE_LIFETIME = 10_000;
-const MAX_RECENT_SHOWN = 5; // max messages visible when chat is closed
+const MAX_LINES = 10;
+const IDLE_FADE_DELAY = 10_000; // start fading after 10s of no new messages
+const FADE_DURATION = 3_000;    // fade over 3s
 
 export function Chat({ messages, onSend, visible, onClose }: Props) {
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [now, setNow] = useState(Date.now());
+  const lastMessageTimeRef = useRef(Date.now());
+  const [fadeOpacity, setFadeOpacity] = useState(1);
 
+  // Track last message time
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
+    if (messages.length > 0) {
+      lastMessageTimeRef.current = messages[messages.length - 1].time;
+    }
+  }, [messages]);
+
+  // Fade timer
+  useEffect(() => {
+    if (visible) {
+      setFadeOpacity(1);
+      return;
+    }
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - lastMessageTimeRef.current;
+      if (elapsed < IDLE_FADE_DELAY) {
+        setFadeOpacity(1);
+      } else if (elapsed < IDLE_FADE_DELAY + FADE_DURATION) {
+        setFadeOpacity(1 - (elapsed - IDLE_FADE_DELAY) / FADE_DURATION);
+      } else {
+        setFadeOpacity(0);
+      }
+    }, 100);
     return () => clearInterval(interval);
-  }, []);
+  }, [visible]);
 
   useEffect(() => {
     if (visible) {
@@ -49,13 +72,9 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
     onClose();
   };
 
-  // When closed: show only recent messages (fading)
-  // When open: show all messages
-  const displayMessages = visible
-    ? messages
-    : messages.filter(m => now - m.time < MESSAGE_LIFETIME).slice(-MAX_RECENT_SHOWN);
-
-  const showChat = visible || displayMessages.length > 0;
+  // Show last MAX_LINES messages
+  const displayMessages = visible ? messages : messages.slice(-MAX_LINES);
+  const showChat = visible || (displayMessages.length > 0 && fadeOpacity > 0.01);
   if (!showChat) return null;
 
   return (
@@ -68,50 +87,42 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
       fontFamily: "'Courier New', monospace",
       fontSize: 13,
       pointerEvents: visible ? 'auto' : 'none',
+      opacity: visible ? 1 : fadeOpacity,
+      transition: visible ? 'none' : 'opacity 0.1s',
     }}>
       {/* Messages */}
       <div
         ref={scrollRef}
         style={{
-          maxHeight: visible ? 300 : 120,
+          maxHeight: `${MAX_LINES * 18}px`,
           overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 2,
-          padding: '4px 0',
+          background: 'rgba(0, 0, 0, 0.3)',
+          borderRadius: 2,
         }}
       >
-        {displayMessages.map((msg, i) => {
-          const age = now - msg.time;
-          const opacity = visible ? 1
-            : age > MESSAGE_LIFETIME * 0.7
-              ? Math.max(0, 1 - (age - MESSAGE_LIFETIME * 0.7) / (MESSAGE_LIFETIME * 0.3))
-              : 1;
-
-          return (
-            <div key={`${msg.sender}-${msg.time}-${i}`} style={{
-              background: 'rgba(0, 0, 0, 0.45)',
-              padding: '2px 6px',
-              borderRadius: 2,
-              color: msg.sender === 'System' ? '#ffff55' : '#fff',
-              textShadow: '1px 1px 0 #000',
-              opacity,
-              lineHeight: '18px',
-              wordBreak: 'break-word',
-            }}>
-              <span style={{
-                color: msg.sender === 'System' ? '#ffff55' : '#ff5555',
-                fontWeight: 'bold',
-              }}>&lt;{msg.sender}&gt;</span>
-              {' '}{msg.text}
-            </div>
-          );
-        })}
+        {displayMessages.map((msg, i) => (
+          <div key={`${msg.sender}-${msg.time}-${i}`} style={{
+            padding: '0 6px',
+            color: msg.sender === 'System' ? '#ffff55' : '#fff',
+            textShadow: '1px 1px 0 #000',
+            lineHeight: '18px',
+            fontSize: 13,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            <span style={{
+              color: msg.sender === 'System' ? '#ffff55' : '#ff5555',
+              fontWeight: 'bold',
+            }}>&lt;{msg.sender}&gt;</span>
+            {' '}{msg.text}
+          </div>
+        ))}
       </div>
 
       {/* Input */}
       {visible && (
-        <form onSubmit={handleSubmit} style={{ marginTop: 4 }}>
+        <form onSubmit={handleSubmit} style={{ marginTop: 2 }}>
           <input
             ref={inputRef}
             type="text"
