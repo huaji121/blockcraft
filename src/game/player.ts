@@ -25,6 +25,10 @@ export class Player {
   private isSprinting: boolean = false;
   private lastWPressTime: number = 0;
   private currentHeight: number = PLAYER_HEIGHT;
+  private bobPhase: number = 0;
+  private bobAmplitude: number = 0;
+  private readonly BOB_SPEED = 4;     // oscillations per block traveled
+  private readonly BOB_AMPLITUDE = 0.06; // max vertical offset
   private world: World;
   private isPointerLocked: boolean = false;
 
@@ -207,8 +211,17 @@ export class Player {
 
     this.moveWithCollision(dt);
 
+    // Camera bob: accumulate phase based on horizontal speed
+    const hSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
+    if (this.isGrounded && hSpeed > 0.5) {
+      this.bobPhase += hSpeed * this.BOB_SPEED * dt;
+      this.bobAmplitude = Math.min(1, this.bobAmplitude + dt * 5);
+    } else {
+      this.bobAmplitude = Math.max(0, this.bobAmplitude - dt * 5);
+    }
+
     this.camera.position.copy(this.position);
-    this.camera.position.y += this.currentHeight * 0.9;
+    this.camera.position.y += this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
 
     // Smoothly interpolate FOV for sprinting
     const targetFov = this.isSprinting ? SPRINT_FOV : DEFAULT_FOV;
