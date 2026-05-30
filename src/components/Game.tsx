@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import { GameEngine } from '../game/engine';
 import { BlockType } from '../game/blocks';
-import { type Slot, EMPTY_SLOT, EMPTY_ITEM_ID, makeSlot, isSlotEmpty, ITEM_REGISTRY, SPAWN_EGG_ID } from '../game/items';
+import { type Slot, EMPTY_SLOT, EMPTY_ITEM_ID, makeSlot, isSlotEmpty, ITEM_REGISTRY } from '../game/items';
 import { DEFAULT_KEYBINDS, isKey } from '../game/keybinds';
 import { Hotbar } from './Hotbar';
 import { Backpack, DELETE_SLOT_INDEX } from './Backpack';
@@ -29,17 +29,7 @@ type InvAction =
   | { type: 'DISTRIBUTE_LEFT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot }
   | { type: 'DISTRIBUTE_RIGHT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot };
 
-const DEFAULT_HOTBAR: Slot[] = [
-  makeSlot(BlockType.DIRT, 64),
-  makeSlot(BlockType.GRASS, 64),
-  makeSlot(BlockType.STONE, 64),
-  makeSlot(BlockType.COBBLESTONE, 64),
-  makeSlot(BlockType.OAK_PLANKS, 64),
-  makeSlot(BlockType.OAK_LOG, 64),
-  makeSlot(BlockType.SAND, 64),
-  makeSlot(BlockType.GLASS, 64),
-  makeSlot(SPAWN_EGG_ID, 64),
-];
+const DEFAULT_HOTBAR: Slot[] = Array.from({ length: 9 }, () => ({ ...EMPTY_SLOT }));
 
 const DEFAULT_BACKPACK: Slot[] = Array.from({ length: 27 }, () => ({ ...EMPTY_SLOT }));
 
