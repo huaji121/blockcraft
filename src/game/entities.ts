@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ITEM_REGISTRY } from './items';
+import { BLOCK_DATA } from './blocks';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -184,11 +185,15 @@ export class DroppedItem extends Entity {
     return tex;
   }
 
-  private static makeFaceMat(texPath: string): THREE.MeshLambertMaterial {
+  private static makeFaceMat(texPath: string, transparent: boolean): THREE.MeshLambertMaterial {
     const tex = DroppedItem.getTex(texPath);
     return new THREE.MeshLambertMaterial({
       map: tex,
       color: 0xffffff,
+      transparent,
+      opacity: transparent ? 0.5 : 1,
+      depthWrite: !transparent,
+      side: transparent ? THREE.DoubleSide : THREE.FrontSide,
     });
   }
 
@@ -201,16 +206,18 @@ export class DroppedItem extends Entity {
     // Build per-face materials: [+X, -X, +Y, -Y, +Z, -Z]
     const item = ITEM_REGISTRY.getById(itemId);
     if (item) {
+      const blockType = item.getBlockType();
+      const isTransparent = blockType != null && BLOCK_DATA[blockType]?.transparent;
       const side = item.getFaceTexture('side');
       const top = item.getFaceTexture('top');
       const bottom = item.getFaceTexture('bottom');
       this.faceMaterials = [
-        DroppedItem.makeFaceMat(side),     // +X right
-        DroppedItem.makeFaceMat(side),     // -X left
-        DroppedItem.makeFaceMat(top),      // +Y top
-        DroppedItem.makeFaceMat(bottom),   // -Y bottom
-        DroppedItem.makeFaceMat(side),     // +Z front
-        DroppedItem.makeFaceMat(side),     // -Z back
+        DroppedItem.makeFaceMat(side, isTransparent),     // +X right
+        DroppedItem.makeFaceMat(side, isTransparent),     // -X left
+        DroppedItem.makeFaceMat(top, isTransparent),      // +Y top
+        DroppedItem.makeFaceMat(bottom, isTransparent),   // -Y bottom
+        DroppedItem.makeFaceMat(side, isTransparent),     // +Z front
+        DroppedItem.makeFaceMat(side, isTransparent),     // -Z back
       ];
     }
 
