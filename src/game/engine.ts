@@ -44,13 +44,13 @@ export class GameEngine {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0x87ceeb, 80, 140);
+    this.scene.fog = new THREE.FogExp2(0x87ceeb, 0.012);
 
     this.camera = new THREE.PerspectiveCamera(
       DEFAULT_FOV,
       window.innerWidth / window.innerHeight,
       0.1,
-      200
+      1000
     );
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -104,6 +104,13 @@ export class GameEngine {
     this.settings = settings;
     this.world.setChunksPerFrame(settings.chunksPerFrame);
     this.world.setRenderDistance(settings.renderDistance);
+    // Update fog: fogDensity 0 = no fog, 100 = heavy fog
+    if (settings.fogDensity <= 0) {
+      this.scene.fog = null;
+    } else {
+      const density = settings.fogDensity * 0.0003;
+      this.scene.fog = new THREE.FogExp2(0x87ceeb, density);
+    }
   }
 
   setOnItemPickup(fn: ItemPickupCallback): void {

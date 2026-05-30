@@ -4,6 +4,7 @@ export interface GameSettings {
   fpsLimit: number;
   chunksPerFrame: number;
   renderDistance: number;
+  fogDensity: number;
 }
 
 interface Props {
@@ -55,6 +56,18 @@ export function Settings({ settings, onChange, onClose }: Props) {
             step={1}
             value={settings.renderDistance}
             onChange={(e) => update('renderDistance', Number(e.target.value))}
+          />
+        </div>
+
+        <div className="settings-row">
+          <label>Fog Density: {settings.fogDensity}</label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={settings.fogDensity}
+            onChange={(e) => update('fogDensity', Number(e.target.value))}
           />
         </div>
 

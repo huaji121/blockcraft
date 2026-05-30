@@ -243,6 +243,7 @@ export function Game() {
     fpsLimit: 0,
     chunksPerFrame: 8,
     renderDistance: 8,
+    fogDensity: 40,
   });
 
   // Chat
