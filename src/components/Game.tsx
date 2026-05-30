@@ -3,6 +3,7 @@ import { GameEngine } from '../game/engine';
 import { BlockType } from '../game/blocks';
 import { type Slot, EMPTY_SLOT, EMPTY_ITEM_ID, makeSlot, isSlotEmpty, ITEM_REGISTRY } from '../game/items';
 import { DEFAULT_KEYBINDS, isKey } from '../game/keybinds';
+import { executeCommand } from '../game/commands';
 import { Hotbar } from './Hotbar';
 import { Backpack, DELETE_SLOT_INDEX } from './Backpack';
 import { BlockCube } from './BlockCube';
@@ -543,9 +544,54 @@ export function Game() {
   }, []);
 
   // Chat handlers
-  const handleChatSend = useCallback((text: string) => {
-    setChatMessages(prev => [...prev, { sender: 'Player', text, time: Date.now() }]);
+  const addChatMessage = useCallback((sender: string, text: string) => {
+    setChatMessages(prev => [...prev, { sender, text, time: Date.now() }]);
   }, []);
+
+  const handleChatSend = useCallback((text: string) => {
+    if (text.startsWith('/')) {
+      // Command
+      const engine = engineRef.current;
+      if (!engine) return;
+      const player = engine.getPlayer();
+      executeCommand(text, {
+        addMessage: addChatMessage,
+        giveItem: (itemId, count) => {
+          dispatch({ type: 'ADD_TO_BACKPACK', itemId, count });
+        },
+        teleport: (x, y, z) => {
+          player.position.set(x, y, z);
+        },
+        clearInventory: () => {
+          // Reset both hotbar and backpack to empty
+          for (let i = 0; i < 9; i++) {
+            dispatch({ type: 'DELETE_ITEM', source: 'hotbar', index: i });
+          }
+          for (let i = 0; i < 36; i++) {
+            dispatch({ type: 'DELETE_ITEM', source: 'backpack', index: i });
+          }
+        },
+        killEntities: () => {
+          engine.getWorld(); // entities are managed by engine
+          // Kill all entities through entity manager
+          const entities = engine.getPlayer()['entityManager']?.getEntities?.();
+          if (entities) {
+            for (let i = entities.length - 1; i >= 0; i--) {
+              if (!entities[i].constructor.name.includes('DroppedItem')) {
+                entities[i].hp = 0;
+              }
+            }
+          }
+        },
+        getPlayerPos: () => {
+          const p = player.position;
+          return { x: p.x, y: p.y, z: p.z };
+        },
+      });
+    } else {
+      addChatMessage('Player', text);
+    }
+  }, [addChatMessage]);
 
   const handleChatClose = useCallback(() => {
     setIsChatOpen(false);
