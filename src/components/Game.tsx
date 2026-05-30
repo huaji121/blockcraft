@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import { GameEngine } from '../game/engine';
 import { BlockType } from '../game/blocks';
 import { type Slot, EMPTY_SLOT, EMPTY_ITEM_ID, makeSlot, isSlotEmpty, ITEM_REGISTRY, SPAWN_EGG_ID } from '../game/items';
+import { DEFAULT_KEYBINDS, isKey } from '../game/keybinds';
 import { Hotbar } from './Hotbar';
 import { Backpack, DELETE_SLOT_INDEX } from './Backpack';
 import { BlockCube } from './BlockCube';
@@ -20,6 +21,7 @@ type InvAction =
   | { type: 'CLICK_SLOT'; source: 'hotbar' | 'backpack'; index: number; heldItem: Slot | null }
   | { type: 'PLACE_ONE'; source: 'hotbar' | 'backpack'; index: number; itemId: number }
   | { type: 'PICK_HALF'; source: 'hotbar' | 'backpack'; index: number }
+  | { type: 'REMOVE_FROM_SLOT'; source: 'hotbar' | 'backpack'; index: number; count: number }
   | { type: 'QUICK_MOVE'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'DELETE_ITEM'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'ADD_TO_BACKPACK'; itemId: number; count?: number }
@@ -87,6 +89,15 @@ function invReducer(state: InvState, action: InvAction): InvState {
       const half = Math.ceil(clicked.count / 2);
       arr[index] = { ...clicked, count: clicked.count - half };
       if (arr[index].count <= 0) arr[index] = { ...EMPTY_SLOT };
+      return source === 'hotbar' ? { ...state, hotbar: arr } : { ...state, backpack: arr };
+    }
+    case 'REMOVE_FROM_SLOT': {
+      const { source, index, count } = action;
+      const arr = source === 'hotbar' ? [...state.hotbar] : [...state.backpack];
+      const slot = getSlot(arr, index);
+      if (isSlotEmpty(slot)) return state;
+      const newCount = slot.count - count;
+      arr[index] = newCount > 0 ? { ...slot, count: newCount } : { ...EMPTY_SLOT };
       return source === 'hotbar' ? { ...state, hotbar: arr } : { ...state, backpack: arr };
     }
     case 'QUICK_MOVE': {
@@ -242,6 +253,7 @@ export function Game() {
   // Held item (follows mouse)
   const [heldItem, setHeldItem] = useState<Slot | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [hoveredSlot, setHoveredSlot] = useState<{ source: 'hotbar' | 'backpack'; index: number } | null>(null);
 
   // Refs
   const selectedSlotRef = useRef(selectedSlot);
@@ -254,6 +266,8 @@ export function Game() {
   heldItemRef.current = heldItem;
   const isBackpackOpenRef = useRef(isBackpackOpen);
   isBackpackOpenRef.current = isBackpackOpen;
+  const hoveredSlotRef = useRef(hoveredSlot);
+  hoveredSlotRef.current = hoveredSlot;
 
   // Track mouse position for held item
   useEffect(() => {
@@ -388,17 +402,19 @@ export function Game() {
     engine.getPlayer().uiOpen = isBackpackOpen || showSettings;
   }, [isBackpackOpen, showSettings]);
 
-  // Keyboard: E for backpack, 1-9 for hotbar
+  // Keyboard handler using key binding system
   useEffect(() => {
+    const kb = DEFAULT_KEYBINDS;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'KeyE') {
+      // Open inventory
+      if (isKey(e, kb.openInventory)) {
         e.preventDefault();
         setIsBackpackOpen(prev => {
           if (!prev) {
             engineRef.current?.exitPointerLock();
             setBackpackTab('inventory');
           } else {
-            // Closing: drop held item
             if (heldItemRef.current && !isSlotEmpty(heldItemRef.current)) {
               dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItemRef.current.itemId, count: heldItemRef.current.count });
               setHeldItem(null);
@@ -409,24 +425,66 @@ export function Game() {
         });
         return;
       }
-      if (e.code === 'F3') {
+
+      // Debug overlay
+      if (isKey(e, kb.debugOverlay)) {
         e.preventDefault();
         setShowDebug(prev => !prev);
         return;
       }
-      if (e.code === 'Escape') {
+
+      // Settings
+      if (isKey(e, kb.settings)) {
         e.preventDefault();
         setShowSettings(prev => {
-          if (!prev) {
-            engineRef.current?.exitPointerLock();
-          }
+          if (!prev) engineRef.current?.exitPointerLock();
           return !prev;
         });
         return;
       }
 
-      const digit = parseInt(e.key);
-      if (digit >= 1 && digit <= 9) setSelectedSlot(digit - 1);
+      // Throw item (Q)
+      if (isKey(e, kb.throwItem)) {
+        e.preventDefault();
+        const throwCount = e.ctrlKey ? 64 : 1;
+        const held = heldItemRef.current;
+
+        if (held && !isSlotEmpty(held)) {
+          // Throw from cursor
+          const count = Math.min(throwCount, held.count);
+          engineRef.current?.throwItem(held.itemId, count);
+          const remaining = held.count - count;
+          setHeldItem(remaining > 0 ? { ...held, count: remaining } : null);
+        } else if (hoveredSlotRef.current) {
+          // Throw from hovered slot (when backpack is open)
+          const { source, index } = hoveredSlotRef.current;
+          const arr = source === 'hotbar' ? hotbarRef.current : backpackRef.current;
+          const slot = arr[index];
+          if (slot && !isSlotEmpty(slot)) {
+            const count = Math.min(throwCount, slot.count);
+            engineRef.current?.throwItem(slot.itemId, count);
+            dispatch({ type: 'REMOVE_FROM_SLOT', source, index, count });
+          }
+        } else if (!isBackpackOpenRef.current) {
+          // Throw from selected hotbar slot (when backpack is closed)
+          const slot = hotbarRef.current[selectedSlotRef.current];
+          if (slot && !isSlotEmpty(slot)) {
+            const count = Math.min(throwCount, slot.count);
+            engineRef.current?.throwItem(slot.itemId, count);
+            dispatch({ type: 'REMOVE_FROM_SLOT', source: 'hotbar', index: selectedSlotRef.current, count });
+          }
+        }
+        return;
+      }
+
+      // Hotbar selection (1-9)
+      for (let i = 1; i <= 9; i++) {
+        const binding = kb[`hotbar${i}` as keyof typeof kb];
+        if (isKey(e, binding)) {
+          setSelectedSlot(i - 1);
+          return;
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -490,6 +548,7 @@ export function Game() {
           heldItem={heldItem}
           onSlotClick={handleSlotClick}
           onDragEnd={handleDragEnd}
+          onHoverSlot={setHoveredSlot}
           onClose={closeBackpack}
         />
       )}

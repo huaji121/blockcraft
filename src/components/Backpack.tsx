@@ -14,6 +14,7 @@ interface Props {
   heldItem: Slot | null;
   onSlotClick: (source: 'hotbar' | 'backpack', index: number, button: number, shiftKey: boolean) => void;
   onDragEnd: (slots: { source: 'hotbar' | 'backpack'; index: number }[], button: number) => void;
+  onHoverSlot: (slot: { source: 'hotbar' | 'backpack'; index: number } | null) => void;
   onClose: () => void;
 }
 
@@ -26,7 +27,7 @@ function slotKey(source: string, index: number): string {
 export function Backpack({
   hotbar, backpack, selected,
   tab, onTabChange, heldItem,
-  onSlotClick, onDragEnd, onClose,
+  onSlotClick, onDragEnd, onHoverSlot, onClose,
 }: Props) {
   const dragRef = useRef({
     active: false,
@@ -55,12 +56,17 @@ export function Backpack({
   };
 
   const handleMouseEnter = (source: 'hotbar' | 'backpack', index: number) => {
+    onHoverSlot({ source, index });
     const drag = dragRef.current;
     if (!drag.active || index < 0) return;
     const key = slotKey(source, index);
     if (drag.visited.has(key)) return;
     drag.visited.add(key);
     drag.slots.push({ source, index });
+  };
+
+  const handleMouseLeave = () => {
+    onHoverSlot(null);
   };
 
   const handleMouseUp = () => {
@@ -101,19 +107,19 @@ export function Backpack({
             <>
               <div className="inv-grid inv-grid-9">
                 {backpack.map((slot, i) => (
-                  <div key={`bp-${i}`} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', i)} onMouseEnter={() => handleMouseEnter('backpack', i)} onContextMenu={(e) => e.preventDefault()}>
+                  <div key={`bp-${i}`} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', i)} onMouseEnter={() => handleMouseEnter('backpack', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                     {renderSlot(slot)}
                   </div>
                 ))}
               </div>
               <div className="backpack-divider" />
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onContextMenu={(e) => e.preventDefault()}>
+                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onMouseEnter={() => onHoverSlot(null)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                   <span className="delete-x">✕</span>
                 </div>
                 <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
                   {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
+                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                       {renderSlot(slot)}
                     </div>
                   ))}
@@ -125,7 +131,7 @@ export function Backpack({
               <div className="creative-grid-wrap">
                 <div className="inv-grid inv-grid-9">
                   {allItems.map((item) => (
-                    <div key={item.id} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', -1 - item.id)} onContextMenu={(e) => e.preventDefault()}>
+                    <div key={item.id} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', -1 - item.id)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                       <BlockCube itemId={item.id} size={22} />
                     </div>
                   ))}
@@ -133,12 +139,12 @@ export function Backpack({
               </div>
               <div className="backpack-divider" />
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onContextMenu={(e) => e.preventDefault()}>
+                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onMouseEnter={() => onHoverSlot(null)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                   <span className="delete-x">✕</span>
                 </div>
                 <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
                   {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
+                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
                       {renderSlot(slot)}
                     </div>
                   ))}

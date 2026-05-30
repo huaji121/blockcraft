@@ -3,6 +3,7 @@ import { World } from './world';
 import { BlockType } from './blocks';
 import { EntityManager } from './entities';
 import { ITEM_REGISTRY, SPAWN_EGG_ID, EMPTY_ITEM_ID } from './items';
+import { DEFAULT_KEYBINDS } from './keybinds';
 import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
   PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY
@@ -140,11 +141,12 @@ export class Player {
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
+    const kb = DEFAULT_KEYBINDS;
     const moveDir = new THREE.Vector3(0, 0, 0);
-    if (this.keys.has('KeyW')) moveDir.add(forward);
-    if (this.keys.has('KeyS')) moveDir.sub(forward);
-    if (this.keys.has('KeyA')) moveDir.sub(right);
-    if (this.keys.has('KeyD')) moveDir.add(right);
+    if (this.keys.has(kb.moveForward)) moveDir.add(forward);
+    if (this.keys.has(kb.moveBackward)) moveDir.sub(forward);
+    if (this.keys.has(kb.moveLeft)) moveDir.sub(right);
+    if (this.keys.has(kb.moveRight)) moveDir.add(right);
 
     if (moveDir.length() > 0) {
       moveDir.normalize().multiplyScalar(PLAYER_SPEED);
@@ -153,7 +155,7 @@ export class Player {
     this.velocity.x = moveDir.x;
     this.velocity.z = moveDir.z;
 
-    if (this.keys.has('Space') && this.isGrounded) {
+    if (this.keys.has(kb.jump) && this.isGrounded) {
       this.velocity.y = JUMP_SPEED;
       this.isGrounded = false;
     }

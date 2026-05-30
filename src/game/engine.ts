@@ -109,6 +109,19 @@ export class GameEngine {
     this.entityManager.setOnItemPickup(fn);
   }
 
+  /** Throw an item from the player's position in the look direction */
+  throwItem(itemId: number, count: number): void {
+    const pos = this.player.position.clone();
+    pos.y += 1.5; // eye height
+
+    const dir = new THREE.Vector3(0, 0, -1);
+    dir.applyQuaternion(this.player.camera.quaternion);
+
+    const drop = this.entityManager.spawnDroppedItem(pos, itemId, count);
+    // Override velocity: forward + slight upward
+    drop.velocity.set(dir.x * 5, dir.y * 5 + 2, dir.z * 5);
+  }
+
   requestPointerLock(): void {
     this.player.requestPointerLock(this.renderer.domElement);
   }
