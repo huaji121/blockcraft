@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { World } from './world';
 import { BlockType } from './blocks';
 import { EntityManager } from './entities';
-import { ITEM_REGISTRY, SPAWN_EGG_ID, EMPTY_ITEM_ID } from './items';
+import { ITEM_REGISTRY, EMPTY_ITEM_ID } from './items';
 import { DEFAULT_KEYBINDS } from './keybinds';
 import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
@@ -312,7 +312,8 @@ export class Player {
       if (selectedItemId === EMPTY_ITEM_ID) return;
 
       // Spawn egg: spawn entity at crosshair hit point
-      if (selectedItemId === SPAWN_EGG_ID && this.entityManager) {
+      const selectedItem = ITEM_REGISTRY.getById(selectedItemId);
+      if (selectedItem?.isSpawnEgg() && this.entityManager) {
         const hit = this.world.raycast(this.camera.position, dir, 7);
         if (hit) {
           // Spawn on top of the hit block surface

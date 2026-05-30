@@ -13,6 +13,8 @@ export abstract class Item {
   abstract getBlockType(): BlockType | null;
   abstract getTexture(): string;
   abstract getFaceTexture(face: 'top' | 'bottom' | 'side'): string;
+
+  isSpawnEgg(): boolean { return false; }
 }
 
 // ── BlockItem ──
@@ -31,7 +33,7 @@ export class BlockItem extends Item {
   }
 }
 
-// ── SimpleItem (non-block items like spawn egg) ──
+// ── SimpleItem (non-block items) ──
 
 export class SimpleItem extends Item {
   constructor(
@@ -47,6 +49,16 @@ export class SimpleItem extends Item {
   getBlockType(): null { return null; }
   getTexture(): string { return this.texturePath; }
   getFaceTexture(): string { return this.texturePath; }
+}
+
+// ── SpawnEggItem ──
+
+export class SpawnEggItem extends SimpleItem {
+  constructor(id: number, name: string, texturePath: string) {
+    super(id, name, texturePath, 64);
+  }
+
+  override isSpawnEgg(): boolean { return true; }
 }
 
 // ── Item IDs ──
@@ -87,7 +99,7 @@ for (const bt of Object.values(BlockType)) {
 }
 
 // Register non-block items
-ITEM_REGISTRY.register(new SimpleItem(SPAWN_EGG_ID, 'Spawn Egg', '/assets/textures/block/snow.png'));
+ITEM_REGISTRY.register(new SpawnEggItem(SPAWN_EGG_ID, 'Spawn Egg', '/assets/textures/block/snow.png'));
 
 // ── Slot type (shared across all inventory UI) ──
 
