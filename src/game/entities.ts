@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ITEM_REGISTRY } from './items';
 import { BLOCK_DATA } from './blocks';
+import type { ParticleManager } from './particles';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -265,10 +266,15 @@ export class DroppedItem extends Entity {
 export class EntityManager {
   private entities: Entity[] = [];
   private scene: THREE.Scene;
+  private particleManager: ParticleManager | null = null;
   private onItemPickup: ((itemId: number, count: number) => boolean) | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+  }
+
+  setParticleManager(pm: ParticleManager): void {
+    this.particleManager = pm;
   }
 
   setOnItemPickup(fn: (itemId: number, count: number) => boolean): void {
@@ -369,9 +375,18 @@ export class EntityManager {
 
     // Update all entities
     for (let i = this.entities.length - 1; i >= 0; i--) {
-      const shouldRemove = this.entities[i].update(dt, getBlock);
+      const entity = this.entities[i];
+      const shouldRemove = entity.update(dt, getBlock);
       if (shouldRemove) {
-        this.entities[i].dispose();
+        // Spawn death particles for non-item entities
+        if (!(entity instanceof DroppedItem) && this.particleManager) {
+          this.particleManager.spawnDeathEffect(
+            entity.position.x,
+            entity.position.y,
+            entity.position.z
+          );
+        }
+        entity.dispose();
         this.entities.splice(i, 1);
       }
     }
