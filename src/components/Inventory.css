@@ -20,7 +20,6 @@
     inset -2px -2px 0 #888,
     4px 4px 0 rgba(0,0,0,0.3);
   padding: 8px;
-  min-width: 320px;
 }
 
 .inv-title {
@@ -99,6 +98,14 @@
   background: rgba(0,0,0,0.25);
   padding: 4px;
   border-radius: 2px;
+}
+
+/* ── Hotbar + delete slot row ── */
+.hotbar-with-delete {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── Delete slot ── */

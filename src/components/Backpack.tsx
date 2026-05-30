@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { type Slot, EMPTY_ITEM_ID, isSlotEmpty, ITEM_REGISTRY } from '../game/items';
+import { type Slot, isSlotEmpty, ITEM_REGISTRY } from '../game/items';
 import { BlockCube } from './BlockCube';
 import './Inventory.css';
 
@@ -39,8 +39,6 @@ export function Backpack({
   const handleMouseDown = (e: React.MouseEvent, source: 'hotbar' | 'backpack', index: number) => {
     e.preventDefault();
     e.stopPropagation();
-
-    // If holding an item and not shift-clicking, start drag (defer click to mouseup)
     if (heldItem && !isSlotEmpty(heldItem) && !e.shiftKey && index >= 0) {
       dragRef.current = {
         active: true,
@@ -48,10 +46,8 @@ export function Backpack({
         visited: new Set([slotKey(source, index)]),
         slots: [{ source, index }],
       };
-      return; // Don't call onSlotClick yet
+      return;
     }
-
-    // No drag: handle click immediately
     onSlotClick(source, index, e.button, e.shiftKey);
   };
 
@@ -73,12 +69,9 @@ export function Backpack({
     const drag = dragRef.current;
     if (!drag.active) return;
     drag.active = false;
-
     if (drag.slots.length > 1) {
-      // Dragged over multiple slots: distribute
       onDragEnd(drag.slots, drag.button);
     } else {
-      // Single click (no drag): handle normally
       const { source, index } = drag.slots[0];
       onSlotClick(source, index, drag.button, false);
     }
@@ -91,8 +84,22 @@ export function Backpack({
     </>
   );
 
-  // Creative tab: all items from registry
   const allItems = ITEM_REGISTRY.allItems;
+
+  const renderHotbarWithDelete = () => (
+    <div className="hotbar-with-delete">
+      <div className="inv-grid inv-grid-9">
+        {hotbar.map((slot, i) => (
+          <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
+            {renderSlot(slot)}
+          </div>
+        ))}
+      </div>
+      <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onMouseEnter={() => onHoverSlot(null)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
+        <span className="delete-x">✕</span>
+      </div>
+    </div>
+  );
 
   return (
     <div className="inv-overlay" onClick={onClose} onMouseUp={handleMouseUp}>
@@ -113,18 +120,7 @@ export function Backpack({
                 ))}
               </div>
               <div className="backpack-divider" />
-              <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onMouseEnter={() => onHoverSlot(null)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
-                  <span className="delete-x">✕</span>
-                </div>
-                <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
-                  {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
-                      {renderSlot(slot)}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {renderHotbarWithDelete()}
             </>
           ) : (
             <>
@@ -138,18 +134,7 @@ export function Backpack({
                 </div>
               </div>
               <div className="backpack-divider" />
-              <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <div className="inv-slot delete-slot" title="Delete" onMouseDown={(e) => handleMouseDown(e, 'backpack', DELETE_SLOT_INDEX)} onMouseEnter={() => onHoverSlot(null)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
-                  <span className="delete-x">✕</span>
-                </div>
-                <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
-                  {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onMouseLeave={handleMouseLeave} onContextMenu={(e) => e.preventDefault()}>
-                      {renderSlot(slot)}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              {renderHotbarWithDelete()}
             </>
           )}
         </div>
