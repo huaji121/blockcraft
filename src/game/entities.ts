@@ -5,7 +5,7 @@ import type { ParticleManager } from './particles';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
-const ENTITY_GRAVITY = 25;
+const ENTITY_GRAVITY = 32; // 0.08 blocks/tick² at 20 ticks/s
 const ENTITY_MAX_HP = 20;
 const KNOCKBACK_STRENGTH = 6;
 const DAMAGE_FLASH_DURATION = 150; // ms
