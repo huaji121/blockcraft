@@ -11,6 +11,7 @@ interface Props {
   onSend: (text: string) => void;
   visible: boolean;
   onClose: () => void;
+  initialValue?: string;
 }
 
 const MAX_LINES = 10;
@@ -18,7 +19,7 @@ const IDLE_FADE_DELAY = 10_000;
 const FADE_DURATION = 3_000;
 const MAX_HISTORY = 50;
 
-export function Chat({ messages, onSend, visible, onClose }: Props) {
+export function Chat({ messages, onSend, visible, onClose, initialValue = '' }: Props) {
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -60,7 +61,14 @@ export function Chat({ messages, onSend, visible, onClose }: Props) {
     if (visible) {
       historyIndexRef.current = -1;
       savedInputRef.current = '';
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setInput(initialValue);
+      setTimeout(() => {
+        inputRef.current?.focus();
+        // Move cursor to end
+        if (inputRef.current) {
+          inputRef.current.selectionStart = inputRef.current.value.length;
+        }
+      }, 50);
     }
   }, [visible]);
 

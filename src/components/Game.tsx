@@ -240,6 +240,7 @@ export function Game() {
   // Chat
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInitialValue, setChatInitialValue] = useState('');
 
   // Position + FPS tracker
   useEffect(() => {
@@ -491,6 +492,16 @@ export function Game() {
       // Open chat (T) - only when backpack is closed
       if (isKey(e, kb.openChat) && !isChatOpen && !isBackpackOpenRef.current) {
         e.preventDefault();
+        setChatInitialValue('');
+        setIsChatOpen(true);
+        engineRef.current?.exitPointerLock();
+        return;
+      }
+
+      // Open chat with command prefix (/)
+      if (isKey(e, kb.openChatCommand) && !isChatOpen && !isBackpackOpenRef.current) {
+        e.preventDefault();
+        setChatInitialValue('/');
         setIsChatOpen(true);
         engineRef.current?.exitPointerLock();
         return;
@@ -680,6 +691,7 @@ export function Game() {
         onSend={handleChatSend}
         visible={isChatOpen}
         onClose={handleChatClose}
+        initialValue={chatInitialValue}
       />
 
       {/* Debug overlay */}

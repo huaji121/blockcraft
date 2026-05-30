@@ -9,6 +9,7 @@ export interface KeyBindings {
   jump: string;
   openInventory: string;
   openChat: string;
+  openChatCommand: string;
   throwItem: string;
   throwItemAll: string;   // Ctrl modifier
   hotbar1: string;
@@ -32,6 +33,7 @@ export const DEFAULT_KEYBINDS: KeyBindings = {
   jump: 'Space',
   openInventory: 'KeyE',
   openChat: 'KeyT',
+  openChatCommand: 'Slash',
   throwItem: 'KeyQ',
   throwItemAll: 'KeyQ',   // same key, Ctrl+Q
   hotbar1: 'Digit1',
