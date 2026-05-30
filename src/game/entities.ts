@@ -258,13 +258,13 @@ export class DroppedItem extends Entity {
 export class EntityManager {
   private entities: Entity[] = [];
   private scene: THREE.Scene;
-  private onItemPickup: ((itemId: number, count: number) => void) | null = null;
+  private onItemPickup: ((itemId: number, count: number) => boolean) | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
-  setOnItemPickup(fn: (itemId: number, count: number) => void): void {
+  setOnItemPickup(fn: (itemId: number, count: number) => boolean): void {
     this.onItemPickup = fn;
   }
 
@@ -329,9 +329,11 @@ export class EntityManager {
 
         const dist = playerPos.distanceTo(drop.position);
         if (dist < DROP_PICKUP_RANGE) {
-          this.onItemPickup(drop.itemId, drop.count);
-          drop.dispose();
-          this.entities.splice(i, 1);
+          const pickedUp = this.onItemPickup(drop.itemId, drop.count);
+          if (pickedUp) {
+            drop.dispose();
+            this.entities.splice(i, 1);
+          }
         }
       }
     }

@@ -11,7 +11,7 @@ export interface EngineSettings {
   renderDistance: number;
 }
 
-export type ItemPickupCallback = (itemId: number, count: number) => void;
+export type ItemPickupCallback = (itemId: number, count: number) => boolean;
 
 export class GameEngine {
   private renderer: THREE.WebGLRenderer;

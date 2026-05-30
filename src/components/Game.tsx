@@ -141,8 +141,9 @@ function invReducer(state: InvState, action: InvAction): InvState {
     case 'ADD_TO_BACKPACK': {
       const { itemId, count = 1 } = action;
       const backpack = [...state.backpack];
+      const hotbar = [...state.hotbar];
       let remaining = count;
-      // Stack into existing
+      // Stack into existing backpack slots
       for (let i = 0; i < backpack.length && remaining > 0; i++) {
         if (backpack[i].itemId === itemId && backpack[i].count < MAX_STACK) {
           const canFit = Math.min(remaining, MAX_STACK - backpack[i].count);
@@ -150,7 +151,7 @@ function invReducer(state: InvState, action: InvAction): InvState {
           remaining -= canFit;
         }
       }
-      // Fill empty
+      // Fill empty backpack slots
       for (let i = 0; i < backpack.length && remaining > 0; i++) {
         if (isSlotEmpty(backpack[i])) {
           const c = Math.min(remaining, MAX_STACK);
@@ -158,7 +159,23 @@ function invReducer(state: InvState, action: InvAction): InvState {
           remaining -= c;
         }
       }
-      return { ...state, backpack };
+      // Stack into existing hotbar slots
+      for (let i = 0; i < hotbar.length && remaining > 0; i++) {
+        if (hotbar[i].itemId === itemId && hotbar[i].count < MAX_STACK) {
+          const canFit = Math.min(remaining, MAX_STACK - hotbar[i].count);
+          hotbar[i] = { ...hotbar[i], count: hotbar[i].count + canFit };
+          remaining -= canFit;
+        }
+      }
+      // Fill empty hotbar slots
+      for (let i = 0; i < hotbar.length && remaining > 0; i++) {
+        if (isSlotEmpty(hotbar[i])) {
+          const c = Math.min(remaining, MAX_STACK);
+          hotbar[i] = makeSlot(itemId, c);
+          remaining -= c;
+        }
+      }
+      return { hotbar, backpack };
     }
     case 'DISTRIBUTE_LEFT': {
       const { slots, heldItem } = action;
@@ -397,7 +414,16 @@ export function Game() {
 
     // Wire item pickup: add to backpack when entity manager collects a drop
     engine.setOnItemPickup((itemId, count) => {
-      dispatch({ type: 'ADD_TO_BACKPACK', itemId, count });
+      // Check if there's space in backpack or hotbar
+      const canFit = (slot: Slot) =>
+        (isSlotEmpty(slot)) || (slot.itemId === itemId && slot.count < 64);
+      const hasSpace =
+        backpackRef.current.some(canFit) || hotbarRef.current.some(canFit);
+      if (hasSpace) {
+        dispatch({ type: 'ADD_TO_BACKPACK', itemId, count });
+        return true;
+      }
+      return false;
     });
 
     engine.start();
