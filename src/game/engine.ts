@@ -11,6 +11,8 @@ export interface EngineSettings {
   renderDistance: number;
 }
 
+export type ItemPickupCallback = (itemId: number, count: number) => void;
+
 export class GameEngine {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
@@ -68,12 +70,16 @@ export class GameEngine {
 
     this.scene.add(this.player.getHighlightMesh());
 
-    // Particle callback on block break
+    // Block break callback: particles + dropped item
     this.player.setOnBlockBreak((wx, wy, wz, blockType) => {
       const topTex = this.world.getTexture(getBlockFaceTexture(blockType, 'top'));
       const bottomTex = this.world.getTexture(getBlockFaceTexture(blockType, 'bottom'));
       const sideTex = this.world.getTexture(getBlockFaceTexture(blockType, 'side'));
       this.particles.spawnBlockBreak(wx, wy, wz, topTex, bottomTex, sideTex);
+
+      // Spawn dropped item at block position
+      const dropPos = new THREE.Vector3(wx + 0.5, wy + 0.5, wz + 0.5);
+      this.entityManager.spawnDroppedItem(dropPos, blockType, 1);
     });
 
     window.addEventListener('resize', this.onResize.bind(this));
@@ -97,6 +103,10 @@ export class GameEngine {
     this.settings = settings;
     this.world.setChunksPerFrame(settings.chunksPerFrame);
     this.world.setRenderDistance(settings.renderDistance);
+  }
+
+  setOnItemPickup(fn: ItemPickupCallback): void {
+    this.entityManager.setOnItemPickup(fn);
   }
 
   requestPointerLock(): void {
@@ -142,7 +152,7 @@ export class GameEngine {
 
     this.player.update(dt);
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
-    this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z));
+    this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z), this.player.position);
     this.particles.update(dt);
 
     this.renderer.render(this.scene, this.camera);

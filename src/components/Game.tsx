@@ -372,6 +372,11 @@ export function Game() {
       return slot?.itemId ?? EMPTY_ITEM_ID;
     });
 
+    // Wire item pickup: add to backpack when entity manager collects a drop
+    engine.setOnItemPickup((itemId, count) => {
+      dispatch({ type: 'ADD_TO_BACKPACK', itemId, count });
+    });
+
     engine.start();
     return () => { engine.dispose(); engineRef.current = null; };
   }, []);

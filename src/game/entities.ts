@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ITEM_REGISTRY } from './items';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -6,7 +7,14 @@ const ENTITY_GRAVITY = 25;
 const ENTITY_MAX_HP = 20;
 const KNOCKBACK_STRENGTH = 6;
 const DAMAGE_FLASH_DURATION = 150; // ms
-const GROUND_FRICTION = 8; // horizontal velocity damping per second
+const GROUND_FRICTION = 8;
+
+// Dropped item constants
+const DROP_SIZE = 0.25;
+const DROP_PICKUP_RANGE = 1.5;
+const DROP_PICKUP_DELAY = 500; // ms before item can be picked up
+const DROP_MERGE_RANGE = 0.5; // merge with nearby same-type drops
+const DROP_LIFETIME = 60_000; // 60 seconds
 
 export class Entity {
   public position: THREE.Vector3;
@@ -16,21 +24,19 @@ export class Entity {
   public width: number = ENTITY_WIDTH;
   public height: number = ENTITY_HEIGHT;
 
-  // Damage flash
   private flashUntil: number = 0;
   private originalColor: THREE.Color;
-  private material: THREE.MeshLambertMaterial;
-
-  private scene: THREE.Scene;
+  protected material: THREE.MeshLambertMaterial;
+  protected scene: THREE.Scene;
   private isGrounded: boolean = false;
 
-  constructor(scene: THREE.Scene, position: THREE.Vector3) {
+  constructor(scene: THREE.Scene, position: THREE.Vector3, color: number = 0xcc8844) {
     this.scene = scene;
     this.position = position.clone();
     this.velocity = new THREE.Vector3(0, 0, 0);
 
-    this.material = new THREE.MeshLambertMaterial({ color: 0xcc8844 });
-    this.originalColor = new THREE.Color(0xcc8844);
+    this.material = new THREE.MeshLambertMaterial({ color });
+    this.originalColor = new THREE.Color(color);
 
     const geo = new THREE.BoxGeometry(ENTITY_WIDTH, ENTITY_HEIGHT, ENTITY_WIDTH);
     this.mesh = new THREE.Mesh(geo, this.material);
@@ -44,76 +50,61 @@ export class Entity {
     this.flashUntil = performance.now() + DAMAGE_FLASH_DURATION;
     this.material.color.set(0xff0000);
 
-    // Apply knockback
     this.velocity.x += knockbackDir.x * KNOCKBACK_STRENGTH;
-    this.velocity.y += 4; // slight upward
+    this.velocity.y += 4;
     this.velocity.z += knockbackDir.z * KNOCKBACK_STRENGTH;
   }
 
   update(dt: number, getBlock: (x: number, y: number, z: number) => number): boolean {
-    // Restore color after flash
     if (performance.now() > this.flashUntil) {
       this.material.color.copy(this.originalColor);
     }
 
-    // Check if grounded by testing block directly below feet
     this.isGrounded = this.checkGrounded(getBlock);
 
     if (this.isGrounded) {
-      // On ground: snap Y, zero vertical velocity, apply horizontal friction
       this.velocity.y = 0;
-      // Friction: exponentially damp horizontal velocity
       const friction = Math.exp(-GROUND_FRICTION * dt);
       this.velocity.x *= friction;
       this.velocity.z *= friction;
-      // Stop tiny movements
       if (Math.abs(this.velocity.x) < 0.01) this.velocity.x = 0;
       if (Math.abs(this.velocity.z) < 0.01) this.velocity.z = 0;
     } else {
-      // In air: apply gravity
       this.velocity.y -= ENTITY_GRAVITY * dt;
     }
 
-    // Move X
     this.position.x += this.velocity.x * dt;
     if (this.collides(getBlock)) {
       this.position.x -= this.velocity.x * dt;
       this.velocity.x = 0;
     }
 
-    // Move Z
     this.position.z += this.velocity.z * dt;
     if (this.collides(getBlock)) {
       this.position.z -= this.velocity.z * dt;
       this.velocity.z = 0;
     }
 
-    // Move Y
     this.position.y += this.velocity.y * dt;
     if (this.collides(getBlock)) {
       if (this.velocity.y <= 0) {
-        // Falling: snap to top of block
         this.position.y = Math.floor(this.position.y) + 1;
       } else {
-        // Rising: undo
         this.position.y -= this.velocity.y * dt;
       }
       this.velocity.y = 0;
     }
 
-    // Update mesh
     this.mesh.position.set(
       this.position.x,
-      this.position.y + ENTITY_HEIGHT / 2,
+      this.position.y + this.height / 2,
       this.position.z
     );
 
-    // Remove if fell out of world
     return this.position.y < -50 || this.hp <= 0;
   }
 
   private checkGrounded(getBlock: (x: number, y: number, z: number) => number): boolean {
-    // Check if there's a solid block directly below the entity's feet
     const halfW = this.width / 2;
     const testY = this.position.y - 0.01;
     const minX = Math.floor(this.position.x - halfW + 0.01);
@@ -124,9 +115,7 @@ export class Entity {
 
     for (let bx = minX; bx <= maxX; bx++) {
       for (let bz = minZ; bz <= maxZ; bz++) {
-        if (getBlock(bx, by, bz) !== 0) {
-          return true;
-        }
+        if (getBlock(bx, by, bz) !== 0) return true;
       }
     }
     return false;
@@ -170,12 +159,113 @@ export class Entity {
   }
 }
 
+// ── Dropped Item ──
+
+export class DroppedItem extends Entity {
+  public itemId: number;
+  public count: number;
+  public spawnTime: number;
+  private faceMaterials: THREE.MeshLambertMaterial[] = [];
+
+  private static loader = new THREE.TextureLoader();
+  private static texCache = new Map<string, THREE.Texture>();
+
+  private static getTex(path: string): THREE.Texture | null {
+    if (!path) return null;
+    let tex = DroppedItem.texCache.get(path);
+    if (!tex) {
+      tex = DroppedItem.loader.load(path);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      DroppedItem.texCache.set(path, tex);
+    }
+    return tex;
+  }
+
+  private static makeFaceMat(texPath: string): THREE.MeshLambertMaterial {
+    const tex = DroppedItem.getTex(texPath);
+    return new THREE.MeshLambertMaterial({
+      map: tex,
+      color: 0xffffff,
+    });
+  }
+
+  constructor(scene: THREE.Scene, position: THREE.Vector3, itemId: number, count: number = 1) {
+    super(scene, position, 0xffffff);
+    this.itemId = itemId;
+    this.count = count;
+    this.spawnTime = performance.now();
+
+    // Build per-face materials: [+X, -X, +Y, -Y, +Z, -Z]
+    const item = ITEM_REGISTRY.getById(itemId);
+    if (item) {
+      const side = item.getFaceTexture('side');
+      const top = item.getFaceTexture('top');
+      const bottom = item.getFaceTexture('bottom');
+      this.faceMaterials = [
+        DroppedItem.makeFaceMat(side),     // +X right
+        DroppedItem.makeFaceMat(side),     // -X left
+        DroppedItem.makeFaceMat(top),      // +Y top
+        DroppedItem.makeFaceMat(bottom),   // -Y bottom
+        DroppedItem.makeFaceMat(side),     // +Z front
+        DroppedItem.makeFaceMat(side),     // -Z back
+      ];
+    }
+
+    // Replace mesh with smaller cube using per-face materials
+    this.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    const geo = new THREE.BoxGeometry(DROP_SIZE, DROP_SIZE, DROP_SIZE);
+    this.width = DROP_SIZE;
+    this.height = DROP_SIZE;
+    this.mesh = new THREE.Mesh(geo, this.faceMaterials.length > 0 ? this.faceMaterials : undefined);
+    this.mesh.position.copy(this.position);
+    this.mesh.position.y += DROP_SIZE / 2;
+    scene.add(this.mesh);
+
+    // Give a small random upward velocity
+    this.velocity.set(
+      (Math.random() - 0.5) * 2,
+      3 + Math.random() * 2,
+      (Math.random() - 0.5) * 2,
+    );
+  }
+
+  // Immune to damage
+  takeDamage(_amount: number, _knockbackDir: THREE.Vector3): void {}
+
+  dispose(): void {
+    for (const mat of this.faceMaterials) mat.dispose();
+    this.faceMaterials = [];
+    super.dispose();
+  }
+
+  update(dt: number, getBlock: (x: number, y: number, z: number) => number): boolean {
+    // Rotate slowly
+    this.mesh.rotation.y += dt * 2;
+
+    // Check lifetime
+    if (performance.now() - this.spawnTime > DROP_LIFETIME) return true;
+
+    return super.update(dt, getBlock);
+  }
+}
+
+// ── Entity Manager ──
+
 export class EntityManager {
   private entities: Entity[] = [];
   private scene: THREE.Scene;
+  private onItemPickup: ((itemId: number, count: number) => void) | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+  }
+
+  setOnItemPickup(fn: (itemId: number, count: number) => void): void {
+    this.onItemPickup = fn;
   }
 
   spawn(position: THREE.Vector3): Entity {
@@ -184,7 +274,13 @@ export class EntityManager {
     return entity;
   }
 
-  /** Raycast against entities. Returns closest hit or null. */
+  spawnDroppedItem(position: THREE.Vector3, itemId: number, count: number = 1): DroppedItem {
+    const drop = new DroppedItem(this.scene, position, itemId, count);
+    this.entities.push(drop);
+    return drop;
+  }
+
+  /** Raycast against entities (ignores DroppedItems). */
   raycastEntities(origin: THREE.Vector3, direction: THREE.Vector3, maxDistance: number): {
     entity: Entity;
     distance: number;
@@ -193,7 +289,8 @@ export class EntityManager {
     let closest: { entity: Entity; distance: number } | null = null;
 
     for (const entity of this.entities) {
-      // Create bounding box for entity
+      if (entity instanceof DroppedItem) continue; // can't attack dropped items
+
       const halfW = entity.width / 2;
       const min = new THREE.Vector3(
         entity.position.x - halfW,
@@ -219,7 +316,49 @@ export class EntityManager {
     return closest;
   }
 
-  update(dt: number, getBlock: (x: number, y: number, z: number) => number): void {
+  update(dt: number, getBlock: (x: number, y: number, z: number) => number, playerPos: THREE.Vector3 | null): void {
+    // Collect dropped items near player
+    if (playerPos && this.onItemPickup) {
+      for (let i = this.entities.length - 1; i >= 0; i--) {
+        const e = this.entities[i];
+        if (!(e instanceof DroppedItem)) continue;
+        const drop = e as DroppedItem;
+
+        // Skip if too new (pickup delay)
+        if (performance.now() - drop.spawnTime < DROP_PICKUP_DELAY) continue;
+
+        const dist = playerPos.distanceTo(drop.position);
+        if (dist < DROP_PICKUP_RANGE) {
+          this.onItemPickup(drop.itemId, drop.count);
+          drop.dispose();
+          this.entities.splice(i, 1);
+        }
+      }
+    }
+
+    // Merge nearby same-type drops
+    const drops = this.entities.filter((e): e is DroppedItem => e instanceof DroppedItem);
+    for (let i = 0; i < drops.length; i++) {
+      for (let j = i + 1; j < drops.length; j++) {
+        const a = drops[i];
+        const b = drops[j];
+        if (a.itemId !== b.itemId) continue;
+        if (a.count + b.count > 64) continue;
+        const dist = a.position.distanceTo(b.position);
+        if (dist < DROP_MERGE_RANGE) {
+          a.count += b.count;
+          const idx = this.entities.indexOf(b);
+          if (idx !== -1) {
+            b.dispose();
+            this.entities.splice(idx, 1);
+          }
+          drops.splice(j, 1);
+          j--;
+        }
+      }
+    }
+
+    // Update all entities
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const shouldRemove = this.entities[i].update(dt, getBlock);
       if (shouldRemove) {
