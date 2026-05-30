@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './world';
 import { Player } from './player';
 import { ParticleManager } from './particles';
+import { EntityManager } from './entities';
 import { BLOCK_DATA, getBlockFaceTexture } from './blocks';
 
 export interface EngineSettings {
@@ -17,6 +18,7 @@ export class GameEngine {
   private world: World;
   private player: Player;
   private particles: ParticleManager;
+  private entityManager: EntityManager;
   private lastTime: number = 0;
   private lastFrameTime: number = 0;
   private running: boolean = false;
@@ -60,7 +62,9 @@ export class GameEngine {
 
     this.world = new World(this.scene);
     this.particles = new ParticleManager(this.scene);
+    this.entityManager = new EntityManager(this.scene);
     this.player = new Player(this.camera, this.world);
+    this.player.setEntityManager(this.entityManager);
 
     this.scene.add(this.player.getHighlightMesh());
 
@@ -138,6 +142,7 @@ export class GameEngine {
 
     this.player.update(dt);
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
+    this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z));
     this.particles.update(dt);
 
     this.renderer.render(this.scene, this.camera);
@@ -153,6 +158,7 @@ export class GameEngine {
 
   dispose(): void {
     this.running = false;
+    this.entityManager.dispose();
     this.particles.dispose();
     this.renderer.dispose();
     this.container.removeChild(this.renderer.domElement);

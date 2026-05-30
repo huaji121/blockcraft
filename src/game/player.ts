@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { World } from './world';
 import { BlockType } from './blocks';
+import { EntityManager } from './entities';
 import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
   PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY
@@ -42,6 +43,9 @@ export class Player {
   public uiOpen: boolean = false;
   private onBlockBreak: ((wx: number, wy: number, wz: number, blockType: BlockType) => void) | null = null;
 
+  // Entity interaction
+  private entityManager: EntityManager | null = null;
+
   constructor(camera: THREE.PerspectiveCamera, world: World) {
     this.camera = camera;
     this.world = world;
@@ -65,6 +69,10 @@ export class Player {
 
   setOnBlockBreak(fn: (wx: number, wy: number, wz: number, blockType: BlockType) => void): void {
     this.onBlockBreak = fn;
+  }
+
+  setEntityManager(em: EntityManager): void {
+    this.entityManager = em;
   }
 
   getHighlightMesh(): THREE.LineSegments {
@@ -256,7 +264,24 @@ export class Player {
     const dir = new THREE.Vector3(0, 0, -1);
     dir.applyQuaternion(this.camera.quaternion);
 
+    // Left click: damage entity or break block
     if (this.leftMouseDown && now - this.lastBreakTime > this.breakCooldown) {
+      // Check entity hit first
+      if (this.entityManager) {
+        const entityHit = this.entityManager.raycastEntities(this.camera.position, dir, 7);
+        if (entityHit) {
+          const knockbackDir = new THREE.Vector3(
+            -Math.sin(this.yaw),
+            0,
+            -Math.cos(this.yaw)
+          ).normalize();
+          entityHit.entity.takeDamage(5, knockbackDir);
+          this.lastBreakTime = now;
+          return;
+        }
+      }
+
+      // No entity hit: break block
       const hit = this.world.raycast(this.camera.position, dir, 7);
       if (hit && hit.blockType !== BlockType.AIR) {
         this.world.setBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, BlockType.AIR);
@@ -265,7 +290,23 @@ export class Player {
       }
     }
 
+    // Right click: spawn entity or place block
     if (this.rightMouseDown && now - this.lastPlaceTime > this.placeCooldown) {
+      const selected = this.getSelectedBlock();
+
+      // Spawn egg: spawn entity at look target
+      if (selected === BlockType.SPAWN_EGG && this.entityManager) {
+        const hit = this.world.raycast(this.camera.position, dir, 7);
+        if (hit) {
+          const spawnPos = hit.blockPos.clone().add(hit.normal);
+          spawnPos.y += 0.1;
+          this.entityManager.spawn(spawnPos);
+          this.lastPlaceTime = now;
+        }
+        return;
+      }
+
+      // Normal block placement
       const hit = this.world.raycast(this.camera.position, dir, 7);
       if (hit) {
         const placePos = hit.blockPos.clone().add(hit.normal);
@@ -276,7 +317,7 @@ export class Player {
           this.position.z + halfW > placePos.z && this.position.z - halfW < placePos.z + 1;
 
         if (!overlaps) {
-          this.world.setBlock(placePos.x, placePos.y, placePos.z, this.getSelectedBlock());
+          this.world.setBlock(placePos.x, placePos.y, placePos.z, selected);
           this.lastPlaceTime = now;
         }
       }

@@ -42,7 +42,7 @@ const DEFAULT_HOTBAR: Slot[] = [
   makeSlot(BlockType.OAK_LOG, 64),
   makeSlot(BlockType.SAND, 64),
   makeSlot(BlockType.GLASS, 64),
-  makeSlot(BlockType.BRICKS, 64),
+  makeSlot(BlockType.SPAWN_EGG, 64),
 ];
 
 const DEFAULT_BACKPACK: Slot[] = Array.from({ length: 27 }, () => ({ ...EMPTY_SLOT }));
