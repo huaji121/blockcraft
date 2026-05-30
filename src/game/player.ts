@@ -173,11 +173,6 @@ export class Player {
     const kb = DEFAULT_KEYBINDS;
     this.isCrouching = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
 
-    // Ctrl+W = sprint, or keep sprinting if W is held from double-tap
-    const ctrlSprint = this.keys.has('ControlLeft') && this.keys.has('KeyW');
-    if (ctrlSprint) {
-      this.isSprinting = true;
-    }
     // Stop sprinting if W is released or crouching
     if (!this.keys.has('KeyW') || this.isCrouching) {
       this.isSprinting = false;
