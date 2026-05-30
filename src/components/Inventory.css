@@ -101,6 +101,25 @@
   border-radius: 2px;
 }
 
+/* ── Delete slot ── */
+.delete-slot {
+  background: #8b3030 !important;
+  border-color: #cc4444 !important;
+  cursor: pointer;
+}
+
+.delete-slot:hover {
+  background: #aa3333 !important;
+}
+
+.delete-x {
+  color: #ff4444;
+  font-size: 20px;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #000;
+  pointer-events: none;
+}
+
 /* ── Tabs ── */
 .inv-tabs {
   display: flex;
