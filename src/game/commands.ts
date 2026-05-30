@@ -111,24 +111,22 @@ const commands: Command[] = [
   },
   {
     name: 'debug',
-    description: 'Toggle debug rendering modes',
-    usage: '/debug enablePolygonMode true|false',
+    description: 'Set render mode',
+    usage: '/debug rendermode <0|1>  (0=filled, 1=wireframe)',
     execute: (args, ctx) => {
-      if (args.length < 2) {
-        ctx.addMessage('System', 'Usage: /debug enablePolygonMode true|false');
+      if (args.length < 2 || args[0].toLowerCase() !== 'rendermode') {
+        ctx.addMessage('System', 'Usage: /debug rendermode <0|1>');
         return;
       }
-      const key = args[0].toLowerCase();
-      const value = args[1].toLowerCase();
-      if (key === 'enablepolygonmode') {
-        if (value === 'true' || value === 'false') {
-          ctx.setWireframe(value === 'true');
-          ctx.addMessage('System', `Wireframe mode: ${value}`);
-        } else {
-          ctx.addMessage('System', 'Value must be true or false');
-        }
+      const mode = parseInt(args[1]);
+      if (mode === 0) {
+        ctx.setWireframe(false);
+        ctx.addMessage('System', 'Render mode: filled');
+      } else if (mode === 1) {
+        ctx.setWireframe(true);
+        ctx.addMessage('System', 'Render mode: wireframe');
       } else {
-        ctx.addMessage('System', `Unknown debug option: ${key}`);
+        ctx.addMessage('System', 'Value must be 0 (filled) or 1 (wireframe)');
       }
     },
   },
