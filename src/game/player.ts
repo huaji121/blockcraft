@@ -350,10 +350,16 @@ export class Player {
 
     // Left click: damage entity or break block
     if (this.leftMouseDown && now - this.lastBreakTime > this.breakCooldown) {
-      // Check entity hit first
+      // Find nearest block hit first
+      const blockHit = this.world.raycast(this.camera.position, dir, 7);
+      const blockDist = blockHit ? this.camera.position.distanceTo(
+        new THREE.Vector3(blockHit.blockPos.x + 0.5, blockHit.blockPos.y + 0.5, blockHit.blockPos.z + 0.5)
+      ) : Infinity;
+
+      // Check entity hit only if closer than the nearest block
       if (this.entityManager) {
         const entityHit = this.entityManager.raycastEntities(this.camera.position, dir, 7);
-        if (entityHit) {
+        if (entityHit && entityHit.distance < blockDist) {
           const knockbackDir = new THREE.Vector3(
             -Math.sin(this.yaw),
             0,
@@ -365,11 +371,10 @@ export class Player {
         }
       }
 
-      // No entity hit: break block
-      const hit = this.world.raycast(this.camera.position, dir, 7);
-      if (hit && hit.blockType !== BlockType.AIR) {
-        this.world.setBlock(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, BlockType.AIR);
-        this.onBlockBreak?.(hit.blockPos.x, hit.blockPos.y, hit.blockPos.z, hit.blockType);
+      // Break block
+      if (blockHit && blockHit.blockType !== BlockType.AIR) {
+        this.world.setBlock(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, BlockType.AIR);
+        this.onBlockBreak?.(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, blockHit.blockType);
         this.lastBreakTime = now;
       }
     }
