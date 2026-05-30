@@ -9,3 +9,5 @@ export const PLAYER_SPEED = 5;
 export const PLAYER_HEIGHT = 1.8;
 export const PLAYER_WIDTH = 0.6;
 export const MOUSE_SENSITIVITY = 0.002;
+export const CROUCH_HEIGHT = 1.5;
+export const CROUCH_SPEED_MULT = 0.3;

@@ -6,7 +6,8 @@ import { ITEM_REGISTRY, EMPTY_ITEM_ID } from './items';
 import { DEFAULT_KEYBINDS } from './keybinds';
 import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
-  PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY
+  PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY,
+  CROUCH_HEIGHT, CROUCH_SPEED_MULT,
 } from './constants';
 
 export class Player {
@@ -18,6 +19,8 @@ export class Player {
   private pitch: number = 0;
   private keys: Set<string> = new Set();
   private isGrounded: boolean = false;
+  private isCrouching: boolean = false;
+  private currentHeight: number = PLAYER_HEIGHT;
   private world: World;
   private isPointerLocked: boolean = false;
 
@@ -155,14 +158,21 @@ export class Player {
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const kb = DEFAULT_KEYBINDS;
+    this.isCrouching = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
+
+    // Smoothly adjust height for crouching
+    const targetHeight = this.isCrouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
+    this.currentHeight += (targetHeight - this.currentHeight) * Math.min(1, dt * 15);
+
     const moveDir = new THREE.Vector3(0, 0, 0);
     if (this.keys.has(kb.moveForward)) moveDir.add(forward);
     if (this.keys.has(kb.moveBackward)) moveDir.sub(forward);
     if (this.keys.has(kb.moveLeft)) moveDir.sub(right);
     if (this.keys.has(kb.moveRight)) moveDir.add(right);
 
+    const speed = this.isCrouching ? PLAYER_SPEED * CROUCH_SPEED_MULT : PLAYER_SPEED;
     if (moveDir.length() > 0) {
-      moveDir.normalize().multiplyScalar(PLAYER_SPEED);
+      moveDir.normalize().multiplyScalar(speed);
     }
 
     this.velocity.x = moveDir.x;
@@ -178,7 +188,7 @@ export class Player {
     this.moveWithCollision(dt);
 
     this.camera.position.copy(this.position);
-    this.camera.position.y += PLAYER_HEIGHT * 0.9;
+    this.camera.position.y += this.currentHeight * 0.9;
 
     const lookDir = new THREE.Vector3(
       -Math.sin(this.yaw) * Math.cos(this.pitch),
@@ -197,12 +207,12 @@ export class Player {
     }
   }
 
-  private collidesAt(pos: THREE.Vector3): boolean {
+  private collidesAt(pos: THREE.Vector3, height: number = this.currentHeight): boolean {
     const halfW = PLAYER_WIDTH / 2;
     const minX = Math.floor(pos.x - halfW);
     const maxX = Math.floor(pos.x + halfW);
     const minY = Math.floor(pos.y);
-    const maxY = Math.floor(pos.y + PLAYER_HEIGHT - 0.001);
+    const maxY = Math.floor(pos.y + height - 0.001);
     const minZ = Math.floor(pos.z - halfW);
     const maxZ = Math.floor(pos.z + halfW);
 
@@ -212,7 +222,7 @@ export class Player {
           if (this.world.getBlock(x, y, z) !== BlockType.AIR) {
             if (
               pos.x + halfW > x && pos.x - halfW < x + 1 &&
-              pos.y + PLAYER_HEIGHT > y && pos.y < y + 1 &&
+              pos.y + height > y && pos.y < y + 1 &&
               pos.z + halfW > z && pos.z - halfW < z + 1
             ) {
               return true;
@@ -224,15 +234,43 @@ export class Player {
     return false;
   }
 
+  private hasGroundBelow(pos: THREE.Vector3): boolean {
+    const halfW = PLAYER_WIDTH / 2;
+    const testY = pos.y - 0.05;
+    const minX = Math.floor(pos.x - halfW + 0.01);
+    const maxX = Math.floor(pos.x + halfW - 0.01);
+    const minZ = Math.floor(pos.z - halfW + 0.01);
+    const maxZ = Math.floor(pos.z + halfW - 0.01);
+    const by = Math.floor(testY);
+    for (let bx = minX; bx <= maxX; bx++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (this.world.getBlock(bx, by, bz) !== BlockType.AIR) return true;
+      }
+    }
+    return false;
+  }
+
   private moveWithCollision(dt: number): void {
+    // X axis
     this.position.x += this.velocity.x * dt;
     if (this.collidesAt(this.position)) {
       this.position.x -= this.velocity.x * dt;
       this.velocity.x = 0;
     }
+    // Crouch edge protection: undo X if no ground below
+    if (this.isCrouching && this.isGrounded && !this.hasGroundBelow(this.position)) {
+      this.position.x -= this.velocity.x * dt;
+      this.velocity.x = 0;
+    }
 
+    // Z axis
     this.position.z += this.velocity.z * dt;
     if (this.collidesAt(this.position)) {
+      this.position.z -= this.velocity.z * dt;
+      this.velocity.z = 0;
+    }
+    // Crouch edge protection: undo Z if no ground below
+    if (this.isCrouching && this.isGrounded && !this.hasGroundBelow(this.position)) {
       this.position.z -= this.velocity.z * dt;
       this.velocity.z = 0;
     }
@@ -339,7 +377,7 @@ export class Player {
         const halfW = PLAYER_WIDTH / 2;
         const overlaps =
           this.position.x + halfW > placePos.x && this.position.x - halfW < placePos.x + 1 &&
-          this.position.y + PLAYER_HEIGHT > placePos.y && this.position.y < placePos.y + 1 &&
+          this.position.y + this.currentHeight > placePos.y && this.position.y < placePos.y + 1 &&
           this.position.z + halfW > placePos.z && this.position.z - halfW < placePos.z + 1;
 
         if (!overlaps) {
