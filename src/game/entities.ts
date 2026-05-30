@@ -2,10 +2,11 @@ import * as THREE from 'three';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
-const ENTITY_GRAVITY = 20;
+const ENTITY_GRAVITY = 25;
 const ENTITY_MAX_HP = 20;
 const KNOCKBACK_STRENGTH = 6;
 const DAMAGE_FLASH_DURATION = 150; // ms
+const GROUND_FRICTION = 8; // horizontal velocity damping per second
 
 export class Entity {
   public position: THREE.Vector3;
@@ -55,13 +56,50 @@ export class Entity {
       this.material.color.copy(this.originalColor);
     }
 
-    // Gravity
-    this.velocity.y -= ENTITY_GRAVITY * dt;
+    // Check if grounded by testing block directly below feet
+    this.isGrounded = this.checkGrounded(getBlock);
 
-    // Move with collision
-    this.moveAxis(dt, 'x', getBlock);
-    this.moveAxis(dt, 'z', getBlock);
-    this.moveAxis(dt, 'y', getBlock);
+    if (this.isGrounded) {
+      // On ground: snap Y, zero vertical velocity, apply horizontal friction
+      this.velocity.y = 0;
+      // Friction: exponentially damp horizontal velocity
+      const friction = Math.exp(-GROUND_FRICTION * dt);
+      this.velocity.x *= friction;
+      this.velocity.z *= friction;
+      // Stop tiny movements
+      if (Math.abs(this.velocity.x) < 0.01) this.velocity.x = 0;
+      if (Math.abs(this.velocity.z) < 0.01) this.velocity.z = 0;
+    } else {
+      // In air: apply gravity
+      this.velocity.y -= ENTITY_GRAVITY * dt;
+    }
+
+    // Move X
+    this.position.x += this.velocity.x * dt;
+    if (this.collides(getBlock)) {
+      this.position.x -= this.velocity.x * dt;
+      this.velocity.x = 0;
+    }
+
+    // Move Z
+    this.position.z += this.velocity.z * dt;
+    if (this.collides(getBlock)) {
+      this.position.z -= this.velocity.z * dt;
+      this.velocity.z = 0;
+    }
+
+    // Move Y
+    this.position.y += this.velocity.y * dt;
+    if (this.collides(getBlock)) {
+      if (this.velocity.y <= 0) {
+        // Falling: snap to top of block
+        this.position.y = Math.floor(this.position.y) + 1;
+      } else {
+        // Rising: undo
+        this.position.y -= this.velocity.y * dt;
+      }
+      this.velocity.y = 0;
+    }
 
     // Update mesh
     this.mesh.position.set(
@@ -74,40 +112,47 @@ export class Entity {
     return this.position.y < -50 || this.hp <= 0;
   }
 
-  private moveAxis(dt: number, axis: 'x' | 'y' | 'z', getBlock: (x: number, y: number, z: number) => number): void {
-    this.position[axis] += this.velocity[axis] * dt;
+  private checkGrounded(getBlock: (x: number, y: number, z: number) => number): boolean {
+    // Check if there's a solid block directly below the entity's feet
+    const halfW = this.width / 2;
+    const testY = this.position.y - 0.01;
+    const minX = Math.floor(this.position.x - halfW + 0.01);
+    const maxX = Math.floor(this.position.x + halfW - 0.01);
+    const minZ = Math.floor(this.position.z - halfW + 0.01);
+    const maxZ = Math.floor(this.position.z + halfW - 0.01);
+    const by = Math.floor(testY);
 
-    if (this.collides(getBlock)) {
-      this.position[axis] -= this.velocity[axis] * dt;
-      if (axis === 'y') {
-        if (this.velocity.y <= 0) {
-          this.position.y = Math.floor(this.position.y - 0.001) + 1;
-          this.isGrounded = true;
+    for (let bx = minX; bx <= maxX; bx++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (getBlock(bx, by, bz) !== 0) {
+          return true;
         }
       }
-      this.velocity[axis] = 0;
-    } else if (axis === 'y') {
-      this.isGrounded = false;
     }
+    return false;
   }
 
   private collides(getBlock: (x: number, y: number, z: number) => number): boolean {
+    return this.collidesAt(getBlock, this.position);
+  }
+
+  private collidesAt(getBlock: (x: number, y: number, z: number) => number, pos: THREE.Vector3): boolean {
     const halfW = this.width / 2;
-    const minX = Math.floor(this.position.x - halfW);
-    const maxX = Math.floor(this.position.x + halfW);
-    const minY = Math.floor(this.position.y);
-    const maxY = Math.floor(this.position.y + this.height - 0.001);
-    const minZ = Math.floor(this.position.z - halfW);
-    const maxZ = Math.floor(this.position.z + halfW);
+    const minX = Math.floor(pos.x - halfW);
+    const maxX = Math.floor(pos.x + halfW);
+    const minY = Math.floor(pos.y);
+    const maxY = Math.floor(pos.y + this.height - 0.001);
+    const minZ = Math.floor(pos.z - halfW);
+    const maxZ = Math.floor(pos.z + halfW);
 
     for (let x = minX; x <= maxX; x++) {
       for (let y = minY; y <= maxY; y++) {
         for (let z = minZ; z <= maxZ; z++) {
           if (getBlock(x, y, z) !== 0) {
             if (
-              this.position.x + halfW > x && this.position.x - halfW < x + 1 &&
-              this.position.y + this.height > y && this.position.y < y + 1 &&
-              this.position.z + halfW > z && this.position.z - halfW < z + 1
+              pos.x + halfW > x && pos.x - halfW < x + 1 &&
+              pos.y + this.height > y && pos.y < y + 1 &&
+              pos.z + halfW > z && pos.z - halfW < z + 1
             ) {
               return true;
             }
