@@ -29,7 +29,9 @@ type InvAction =
   | { type: 'PICK_HALF'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'QUICK_MOVE'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'DELETE_ITEM'; source: 'hotbar' | 'backpack'; index: number }
-  | { type: 'ADD_TO_BACKPACK'; blockType: BlockType; count?: number };
+  | { type: 'ADD_TO_BACKPACK'; blockType: BlockType; count?: number }
+  | { type: 'DISTRIBUTE_LEFT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot }
+  | { type: 'DISTRIBUTE_RIGHT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot };
 
 const DEFAULT_HOTBAR: Slot[] = [
   makeSlot(BlockType.DIRT, 64),
@@ -148,6 +150,45 @@ function invReducer(state: InvState, action: InvAction): InvState {
         }
       }
       return { ...state, backpack };
+    }
+    case 'DISTRIBUTE_LEFT': {
+      // Left drag: distribute evenly across slots, remainder stays on mouse
+      const { slots, heldItem } = action;
+      let hotbar = [...state.hotbar];
+      let backpack = [...state.backpack];
+      const perSlot = Math.floor(heldItem.count / slots.length);
+      if (perSlot === 0) return state;
+      for (let i = 0; i < slots.length; i++) {
+        const { source, index } = slots[i];
+        const arr = source === 'hotbar' ? hotbar : backpack;
+        const slot = arr[index];
+        if (slot.type === BlockType.AIR || slot.type === heldItem.type) {
+          const canFit = Math.min(perSlot, MAX_STACK - slot.count);
+          if (canFit > 0) {
+            arr[index] = slot.type === BlockType.AIR
+              ? makeSlot(heldItem.type, canFit)
+              : { ...slot, count: slot.count + canFit };
+          }
+        }
+      }
+      return { hotbar, backpack };
+    }
+    case 'DISTRIBUTE_RIGHT': {
+      // Right drag: place 1 item per slot
+      const { slots, heldItem } = action;
+      let hotbar = [...state.hotbar];
+      let backpack = [...state.backpack];
+      for (let i = 0; i < slots.length; i++) {
+        const { source, index } = slots[i];
+        const arr = source === 'hotbar' ? hotbar : backpack;
+        const slot = arr[index];
+        if (slot.type === BlockType.AIR) {
+          arr[index] = makeSlot(heldItem.type, 1);
+        } else if (slot.type === heldItem.type && slot.count < MAX_STACK) {
+          arr[index] = { ...slot, count: slot.count + 1 };
+        }
+      }
+      return { hotbar, backpack };
     }
     default:
       return state;
@@ -296,6 +337,24 @@ export function Game() {
     }
   }, [heldItem]);
 
+  // Drag end: distribute held item across slots
+  const handleDragEnd = useCallback((slots: { source: 'hotbar' | 'backpack'; index: number }[], button: number) => {
+    const held = heldItemRef.current;
+    if (!held || held.type === BlockType.AIR || slots.length === 0) return;
+    if (button === 0) {
+      dispatch({ type: 'DISTRIBUTE_LEFT', slots, heldItem: held });
+      const perSlot = Math.floor(held.count / slots.length);
+      const distributed = perSlot * slots.length;
+      const leftover = held.count - distributed;
+      setHeldItem(leftover > 0 ? { ...held, count: leftover } : null);
+    } else if (button === 2) {
+      dispatch({ type: 'DISTRIBUTE_RIGHT', slots, heldItem: held });
+      const used = Math.min(held.count, slots.length);
+      const leftover = held.count - used;
+      setHeldItem(leftover > 0 ? { ...held, count: leftover } : null);
+    }
+  }, []);
+
   // Close backpack: drop held item back into first empty slot, then lock pointer
   const closeBackpack = useCallback(() => {
     if (heldItem) {
@@ -430,7 +489,9 @@ export function Game() {
           selected={selectedSlot}
           tab={backpackTab}
           onTabChange={setBackpackTab}
+          heldItem={heldItem}
           onSlotClick={handleSlotClick}
+          onDragEnd={handleDragEnd}
           onClose={closeBackpack}
         />
       )}

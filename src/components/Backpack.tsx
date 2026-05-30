@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef } from 'react';
 import { BlockType, ALL_BLOCKS } from '../game/blocks';
 import { BlockCube } from './BlockCube';
 import './Inventory.css';
@@ -16,21 +16,71 @@ interface Props {
   selected: number;
   tab: BackpackTab;
   onTabChange: (tab: BackpackTab) => void;
+  heldItem: Slot | null;
   onSlotClick: (source: 'hotbar' | 'backpack', index: number, button: number, shiftKey: boolean) => void;
+  onDragEnd: (slots: { source: 'hotbar' | 'backpack'; index: number }[], button: number) => void;
   onClose: () => void;
 }
 
 export const DELETE_SLOT_INDEX = -100;
 
+function slotKey(source: string, index: number): string {
+  return `${source}:${index}`;
+}
+
 export function Backpack({
   hotbar, backpack, selected,
-  tab, onTabChange,
-  onSlotClick, onClose,
+  tab, onTabChange, heldItem,
+  onSlotClick, onDragEnd, onClose,
 }: Props) {
+  const dragRef = useRef({
+    active: false,
+    button: 0,
+    visited: new Set<string>(),
+    slots: [] as { source: 'hotbar' | 'backpack'; index: number }[],
+  });
+
   const handleMouseDown = (e: React.MouseEvent, source: 'hotbar' | 'backpack', index: number) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // If holding an item and not shift-clicking, start drag (defer click to mouseup)
+    if (heldItem && heldItem.type !== BlockType.AIR && !e.shiftKey && index >= 0) {
+      dragRef.current = {
+        active: true,
+        button: e.button,
+        visited: new Set([slotKey(source, index)]),
+        slots: [{ source, index }],
+      };
+      return; // Don't call onSlotClick yet
+    }
+
+    // No drag: handle click immediately
     onSlotClick(source, index, e.button, e.shiftKey);
+  };
+
+  const handleMouseEnter = (source: 'hotbar' | 'backpack', index: number) => {
+    const drag = dragRef.current;
+    if (!drag.active || index < 0) return;
+    const key = slotKey(source, index);
+    if (drag.visited.has(key)) return;
+    drag.visited.add(key);
+    drag.slots.push({ source, index });
+  };
+
+  const handleMouseUp = () => {
+    const drag = dragRef.current;
+    if (!drag.active) return;
+    drag.active = false;
+
+    if (drag.slots.length > 1) {
+      // Dragged over multiple slots: distribute
+      onDragEnd(drag.slots, drag.button);
+    } else {
+      // Single click (no drag): handle normally
+      const { source, index } = drag.slots[0];
+      onSlotClick(source, index, drag.button, false);
+    }
   };
 
   const renderSlot = (slot: Slot) => (
@@ -41,7 +91,7 @@ export function Backpack({
   );
 
   return (
-    <div className="inv-overlay" onClick={onClose}>
+    <div className="inv-overlay" onClick={onClose} onMouseUp={handleMouseUp}>
       <div className="inv-panel" onClick={(e) => e.stopPropagation()}>
         <div className="inv-tabs">
           <button className={`inv-tab ${tab === 'inventory' ? 'active' : ''}`} onClick={() => onTabChange('inventory')}>Inventory</button>
@@ -53,7 +103,7 @@ export function Backpack({
             <>
               <div className="inv-grid inv-grid-9">
                 {backpack.map((slot, i) => (
-                  <div key={`bp-${i}`} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', i)} onContextMenu={(e) => e.preventDefault()}>
+                  <div key={`bp-${i}`} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', i)} onMouseEnter={() => handleMouseEnter('backpack', i)} onContextMenu={(e) => e.preventDefault()}>
                     {renderSlot(slot)}
                   </div>
                 ))}
@@ -65,7 +115,7 @@ export function Backpack({
                 </div>
                 <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
                   {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
+                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
                       {renderSlot(slot)}
                     </div>
                   ))}
@@ -90,7 +140,7 @@ export function Backpack({
                 </div>
                 <div className="inv-grid inv-grid-9" style={{ flex: 1 }}>
                   {hotbar.map((slot, i) => (
-                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
+                    <div key={`hb-${i}`} className={`inv-slot ${i === selected ? 'selected' : ''}`} onMouseDown={(e) => handleMouseDown(e, 'hotbar', i)} onMouseEnter={() => handleMouseEnter('hotbar', i)} onContextMenu={(e) => e.preventDefault()}>
                       {renderSlot(slot)}
                     </div>
                   ))}
