@@ -16,7 +16,6 @@ export enum BlockType {
   IRON_ORE = 14,
   GOLD_ORE = 15,
   DIAMOND_ORE = 16,
-  SPAWN_EGG = 17,
 }
 
 export interface BlockFaceTextures {
@@ -51,7 +50,6 @@ export const BLOCK_DATA: Record<number, BlockData> = {
   [BlockType.IRON_ORE]:    { name: 'Iron Ore',     solid: true,  transparent: false, texture: '/assets/textures/block/iron_ore.png' },
   [BlockType.GOLD_ORE]:    { name: 'Gold Ore',     solid: true,  transparent: false, texture: '/assets/textures/block/gold_ore.png' },
   [BlockType.DIAMOND_ORE]: { name: 'Diamond Ore',  solid: true,  transparent: false, texture: '/assets/textures/block/diamond_ore.png' },
-  [BlockType.SPAWN_EGG]:   { name: 'Spawn Egg',    solid: false, transparent: false, texture: '/assets/textures/block/snow.png' },
 };
 
 /** Get the texture path for a specific face of a block */

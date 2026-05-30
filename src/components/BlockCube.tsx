@@ -1,15 +1,17 @@
-import { getBlockFaceTexture } from '../game/blocks';
-import type { BlockType } from '../game/blocks';
+import { ITEM_REGISTRY } from '../game/items';
 
 interface Props {
-  blockType: BlockType;
+  itemId: number;
   size?: number;
 }
 
-export function BlockCube({ blockType, size = 28 }: Props) {
-  const top = getBlockFaceTexture(blockType, 'top');
-  const bottom = getBlockFaceTexture(blockType, 'bottom');
-  const side = getBlockFaceTexture(blockType, 'side');
+export function BlockCube({ itemId, size = 28 }: Props) {
+  const item = ITEM_REGISTRY.getById(itemId);
+  if (!item) return null;
+
+  const top = item.getFaceTexture('top');
+  const bottom = item.getFaceTexture('bottom');
+  const side = item.getFaceTexture('side');
   const half = size / 2;
 
   const face = (bg: string, transform: string): React.CSSProperties => ({

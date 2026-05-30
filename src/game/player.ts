@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './world';
 import { BlockType } from './blocks';
 import { EntityManager } from './entities';
+import { ITEM_REGISTRY, SPAWN_EGG_ID, EMPTY_ITEM_ID } from './items';
 import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
   PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY
@@ -39,7 +40,7 @@ export class Player {
   private highlightMesh: THREE.LineSegments;
 
   // Inventory integration
-  private getSelectedBlock: () => BlockType = () => BlockType.DIRT;
+  private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;
   public uiOpen: boolean = false;
   private onBlockBreak: ((wx: number, wy: number, wz: number, blockType: BlockType) => void) | null = null;
 
@@ -63,8 +64,8 @@ export class Player {
     this.setupControls();
   }
 
-  setGetSelectedBlock(fn: () => BlockType): void {
-    this.getSelectedBlock = fn;
+  setGetSelectedItemId(fn: () => number): void {
+    this.getSelectedItemId = fn;
   }
 
   setOnBlockBreak(fn: (wx: number, wy: number, wz: number, blockType: BlockType) => void): void {
@@ -292,10 +293,11 @@ export class Player {
 
     // Right click: spawn entity or place block
     if (this.rightMouseDown && now - this.lastPlaceTime > this.placeCooldown) {
-      const selected = this.getSelectedBlock();
+      const selectedItemId = this.getSelectedItemId();
+      if (selectedItemId === EMPTY_ITEM_ID) return;
 
       // Spawn egg: spawn entity at look target
-      if (selected === BlockType.SPAWN_EGG && this.entityManager) {
+      if (selectedItemId === SPAWN_EGG_ID && this.entityManager) {
         const hit = this.world.raycast(this.camera.position, dir, 7);
         if (hit) {
           const spawnPos = hit.blockPos.clone().add(hit.normal);
@@ -307,6 +309,10 @@ export class Player {
       }
 
       // Normal block placement
+      const item = ITEM_REGISTRY.getById(selectedItemId);
+      const blockType = item?.getBlockType();
+      if (blockType == null) return;
+
       const hit = this.world.raycast(this.camera.position, dir, 7);
       if (hit) {
         const placePos = hit.blockPos.clone().add(hit.normal);
@@ -317,7 +323,7 @@ export class Player {
           this.position.z + halfW > placePos.z && this.position.z - halfW < placePos.z + 1;
 
         if (!overlaps) {
-          this.world.setBlock(placePos.x, placePos.y, placePos.z, selected);
+          this.world.setBlock(placePos.x, placePos.y, placePos.z, blockType);
           this.lastPlaceTime = now;
         }
       }

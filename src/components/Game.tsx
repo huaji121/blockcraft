@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState, useCallback, useReducer } from 'react';
 import { GameEngine } from '../game/engine';
 import { BlockType } from '../game/blocks';
+import { type Slot, EMPTY_SLOT, EMPTY_ITEM_ID, makeSlot, isSlotEmpty, ITEM_REGISTRY, SPAWN_EGG_ID } from '../game/items';
 import { Hotbar } from './Hotbar';
 import { Backpack, DELETE_SLOT_INDEX } from './Backpack';
 import { BlockCube } from './BlockCube';
 import { DebugOverlay } from './DebugOverlay';
 import { Settings, type GameSettings } from './Settings';
 import './Inventory.css';
-
-export interface Slot {
-  type: BlockType;
-  count: number;
-}
-
-export const EMPTY_SLOT: Slot = { type: BlockType.AIR, count: 0 };
-export const makeSlot = (type: BlockType, count = 1): Slot => ({ type, count });
 
 interface InvState {
   hotbar: Slot[];
@@ -25,11 +18,11 @@ const MAX_STACK = 64;
 
 type InvAction =
   | { type: 'CLICK_SLOT'; source: 'hotbar' | 'backpack'; index: number; heldItem: Slot | null }
-  | { type: 'PLACE_ONE'; source: 'hotbar' | 'backpack'; index: number; blockType: BlockType }
+  | { type: 'PLACE_ONE'; source: 'hotbar' | 'backpack'; index: number; itemId: number }
   | { type: 'PICK_HALF'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'QUICK_MOVE'; source: 'hotbar' | 'backpack'; index: number }
   | { type: 'DELETE_ITEM'; source: 'hotbar' | 'backpack'; index: number }
-  | { type: 'ADD_TO_BACKPACK'; blockType: BlockType; count?: number }
+  | { type: 'ADD_TO_BACKPACK'; itemId: number; count?: number }
   | { type: 'DISTRIBUTE_LEFT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot }
   | { type: 'DISTRIBUTE_RIGHT'; slots: { source: 'hotbar' | 'backpack'; index: number }[]; heldItem: Slot };
 
@@ -42,29 +35,33 @@ const DEFAULT_HOTBAR: Slot[] = [
   makeSlot(BlockType.OAK_LOG, 64),
   makeSlot(BlockType.SAND, 64),
   makeSlot(BlockType.GLASS, 64),
-  makeSlot(BlockType.SPAWN_EGG, 64),
+  makeSlot(SPAWN_EGG_ID, 64),
 ];
 
 const DEFAULT_BACKPACK: Slot[] = Array.from({ length: 27 }, () => ({ ...EMPTY_SLOT }));
+
+function getSlot(arr: Slot[], index: number): Slot {
+  return arr[index] ?? EMPTY_SLOT;
+}
 
 function invReducer(state: InvState, action: InvAction): InvState {
   switch (action.type) {
     case 'CLICK_SLOT': {
       const { source, index, heldItem } = action;
       const arr = source === 'hotbar' ? [...state.hotbar] : [...state.backpack];
-      const clicked = arr[index];
+      const clicked = getSlot(arr, index);
 
-      if (heldItem) {
-        if (clicked.type === BlockType.AIR) {
+      if (heldItem && !isSlotEmpty(heldItem)) {
+        if (isSlotEmpty(clicked)) {
           arr[index] = { ...heldItem };
-        } else if (clicked.type === heldItem.type) {
+        } else if (clicked.itemId === heldItem.itemId) {
           const canFit = Math.min(heldItem.count, MAX_STACK - clicked.count);
           arr[index] = { ...clicked, count: clicked.count + canFit };
         } else {
           arr[index] = { ...heldItem };
         }
       } else {
-        if (clicked.type !== BlockType.AIR) {
+        if (!isSlotEmpty(clicked)) {
           arr[index] = { ...EMPTY_SLOT };
         }
       }
@@ -72,12 +69,12 @@ function invReducer(state: InvState, action: InvAction): InvState {
       return source === 'hotbar' ? { ...state, hotbar: arr } : { ...state, backpack: arr };
     }
     case 'PLACE_ONE': {
-      const { source, index, blockType } = action;
+      const { source, index, itemId } = action;
       const arr = source === 'hotbar' ? [...state.hotbar] : [...state.backpack];
-      const clicked = arr[index];
-      if (clicked.type === BlockType.AIR) {
-        arr[index] = makeSlot(blockType, 1);
-      } else if (clicked.type === blockType && clicked.count < MAX_STACK) {
+      const clicked = getSlot(arr, index);
+      if (isSlotEmpty(clicked)) {
+        arr[index] = makeSlot(itemId, 1);
+      } else if (clicked.itemId === itemId && clicked.count < MAX_STACK) {
         arr[index] = { ...clicked, count: clicked.count + 1 };
       }
       return source === 'hotbar' ? { ...state, hotbar: arr } : { ...state, backpack: arr };
@@ -85,8 +82,8 @@ function invReducer(state: InvState, action: InvAction): InvState {
     case 'PICK_HALF': {
       const { source, index } = action;
       const arr = source === 'hotbar' ? [...state.hotbar] : [...state.backpack];
-      const clicked = arr[index];
-      if (clicked.type === BlockType.AIR) return state;
+      const clicked = getSlot(arr, index);
+      if (isSlotEmpty(clicked)) return state;
       const half = Math.ceil(clicked.count / 2);
       arr[index] = { ...clicked, count: clicked.count - half };
       if (arr[index].count <= 0) arr[index] = { ...EMPTY_SLOT };
@@ -97,12 +94,12 @@ function invReducer(state: InvState, action: InvAction): InvState {
       const fromArr = source === 'hotbar' ? [...state.hotbar] : [...state.backpack];
       const toSource = source === 'hotbar' ? 'backpack' : 'hotbar';
       const toArr = toSource === 'hotbar' ? [...state.hotbar] : [...state.backpack];
-      const slot = fromArr[index];
-      if (slot.type === BlockType.AIR) return state;
+      const slot = getSlot(fromArr, index);
+      if (isSlotEmpty(slot)) return state;
       let remaining = slot.count;
       // Stack into existing same-type slots first
       for (let i = 0; i < toArr.length && remaining > 0; i++) {
-        if (toArr[i].type === slot.type && toArr[i].count < MAX_STACK) {
+        if (toArr[i].itemId === slot.itemId && toArr[i].count < MAX_STACK) {
           const canFit = Math.min(remaining, MAX_STACK - toArr[i].count);
           toArr[i] = { ...toArr[i], count: toArr[i].count + canFit };
           remaining -= canFit;
@@ -110,9 +107,9 @@ function invReducer(state: InvState, action: InvAction): InvState {
       }
       // Fill empty slots
       for (let i = 0; i < toArr.length && remaining > 0; i++) {
-        if (toArr[i].type === BlockType.AIR) {
+        if (isSlotEmpty(toArr[i])) {
           const count = Math.min(remaining, MAX_STACK);
-          toArr[i] = makeSlot(slot.type, count);
+          toArr[i] = makeSlot(slot.itemId, count);
           remaining -= count;
         }
       }
@@ -130,12 +127,12 @@ function invReducer(state: InvState, action: InvAction): InvState {
       return source === 'hotbar' ? { ...state, hotbar: arr } : { ...state, backpack: arr };
     }
     case 'ADD_TO_BACKPACK': {
-      const { blockType, count = 1 } = action;
+      const { itemId, count = 1 } = action;
       const backpack = [...state.backpack];
       let remaining = count;
       // Stack into existing
       for (let i = 0; i < backpack.length && remaining > 0; i++) {
-        if (backpack[i].type === blockType && backpack[i].count < MAX_STACK) {
+        if (backpack[i].itemId === itemId && backpack[i].count < MAX_STACK) {
           const canFit = Math.min(remaining, MAX_STACK - backpack[i].count);
           backpack[i] = { ...backpack[i], count: backpack[i].count + canFit };
           remaining -= canFit;
@@ -143,16 +140,15 @@ function invReducer(state: InvState, action: InvAction): InvState {
       }
       // Fill empty
       for (let i = 0; i < backpack.length && remaining > 0; i++) {
-        if (backpack[i].type === BlockType.AIR) {
+        if (isSlotEmpty(backpack[i])) {
           const c = Math.min(remaining, MAX_STACK);
-          backpack[i] = makeSlot(blockType, c);
+          backpack[i] = makeSlot(itemId, c);
           remaining -= c;
         }
       }
       return { ...state, backpack };
     }
     case 'DISTRIBUTE_LEFT': {
-      // Left drag: distribute evenly across slots, remainder stays on mouse
       const { slots, heldItem } = action;
       let hotbar = [...state.hotbar];
       let backpack = [...state.backpack];
@@ -161,12 +157,12 @@ function invReducer(state: InvState, action: InvAction): InvState {
       for (let i = 0; i < slots.length; i++) {
         const { source, index } = slots[i];
         const arr = source === 'hotbar' ? hotbar : backpack;
-        const slot = arr[index];
-        if (slot.type === BlockType.AIR || slot.type === heldItem.type) {
+        const slot = getSlot(arr, index);
+        if (isSlotEmpty(slot) || slot.itemId === heldItem.itemId) {
           const canFit = Math.min(perSlot, MAX_STACK - slot.count);
           if (canFit > 0) {
-            arr[index] = slot.type === BlockType.AIR
-              ? makeSlot(heldItem.type, canFit)
+            arr[index] = isSlotEmpty(slot)
+              ? makeSlot(heldItem.itemId, canFit)
               : { ...slot, count: slot.count + canFit };
           }
         }
@@ -174,17 +170,16 @@ function invReducer(state: InvState, action: InvAction): InvState {
       return { hotbar, backpack };
     }
     case 'DISTRIBUTE_RIGHT': {
-      // Right drag: place 1 item per slot
       const { slots, heldItem } = action;
       let hotbar = [...state.hotbar];
       let backpack = [...state.backpack];
       for (let i = 0; i < slots.length; i++) {
         const { source, index } = slots[i];
         const arr = source === 'hotbar' ? hotbar : backpack;
-        const slot = arr[index];
-        if (slot.type === BlockType.AIR) {
-          arr[index] = makeSlot(heldItem.type, 1);
-        } else if (slot.type === heldItem.type && slot.count < MAX_STACK) {
+        const slot = getSlot(arr, index);
+        if (isSlotEmpty(slot)) {
+          arr[index] = makeSlot(heldItem.itemId, 1);
+        } else if (slot.itemId === heldItem.itemId && slot.count < MAX_STACK) {
           arr[index] = { ...slot, count: slot.count + 1 };
         }
       }
@@ -224,7 +219,6 @@ export function Game() {
   // Position + FPS tracker
   useEffect(() => {
     let rafId: number;
-
     const tick = () => {
       const engine = engineRef.current;
       if (engine) {
@@ -234,7 +228,6 @@ export function Game() {
       }
       rafId = requestAnimationFrame(tick);
     };
-
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
@@ -257,12 +250,14 @@ export function Game() {
   hotbarRef.current = inv.hotbar;
   const backpackRef = useRef(inv.backpack);
   backpackRef.current = inv.backpack;
+  const heldItemRef = useRef(heldItem);
+  heldItemRef.current = heldItem;
+  const isBackpackOpenRef = useRef(isBackpackOpen);
+  isBackpackOpenRef.current = isBackpackOpen;
 
   // Track mouse position for held item
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
+    const onMove = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY });
     document.addEventListener('mousemove', onMove);
     return () => document.removeEventListener('mousemove', onMove);
   }, []);
@@ -276,42 +271,42 @@ export function Game() {
       return;
     }
 
-    // Creative tab (negative index: -1 - blockType)
+    // Creative tab (negative index: -1 - itemId)
     if (source === 'backpack' && index < 0) {
-      const blockType = (-1 - index) as BlockType;
+      const itemId = -1 - index;
       if (shiftKey && heldItem) { setHeldItem(null); return; }
-      if (shiftKey && !heldItem) { setHeldItem({ type: blockType, count: MAX_STACK }); return; }
-      if (heldItem) { dispatch({ type: 'ADD_TO_BACKPACK', blockType: heldItem.type, count: heldItem.count }); }
-      setHeldItem({ type: blockType, count: MAX_STACK });
+      if (shiftKey && !heldItem) { setHeldItem(makeSlot(itemId, MAX_STACK)); return; }
+      if (heldItem && !isSlotEmpty(heldItem)) { dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItem.itemId, count: heldItem.count }); }
+      setHeldItem(makeSlot(itemId, MAX_STACK));
       return;
     }
 
     const arr = source === 'hotbar' ? hotbarRef.current : backpackRef.current;
-    const clicked = arr[index];
+    const clicked = getSlot(arr, index);
 
     // Shift+click: quick move
     if (shiftKey) {
-      if (clicked.type !== BlockType.AIR) {
+      if (!isSlotEmpty(clicked)) {
         dispatch({ type: 'QUICK_MOVE', source, index });
       }
       return;
     }
 
-    if (heldItem) {
+    if (heldItem && !isSlotEmpty(heldItem)) {
       if (button === 2) {
         // Right click: place 1
-        if (clicked.type === BlockType.AIR || clicked.type === heldItem.type) {
+        if (isSlotEmpty(clicked) || clicked.itemId === heldItem.itemId) {
           if (clicked.count < MAX_STACK) {
-            dispatch({ type: 'PLACE_ONE', source, index, blockType: heldItem.type });
+            dispatch({ type: 'PLACE_ONE', source, index, itemId: heldItem.itemId });
             setHeldItem(heldItem.count <= 1 ? null : { ...heldItem, count: heldItem.count - 1 });
           }
         }
       } else {
         // Left click: place all or swap
-        if (clicked.type === BlockType.AIR) {
+        if (isSlotEmpty(clicked)) {
           dispatch({ type: 'CLICK_SLOT', source, index, heldItem });
           setHeldItem(null);
-        } else if (clicked.type === heldItem.type) {
+        } else if (clicked.itemId === heldItem.itemId) {
           const canFit = Math.min(heldItem.count, MAX_STACK - clicked.count);
           dispatch({ type: 'CLICK_SLOT', source, index, heldItem });
           const leftover = heldItem.count - canFit;
@@ -322,12 +317,12 @@ export function Game() {
         }
       }
     } else {
-      if (clicked.type !== BlockType.AIR) {
+      if (!isSlotEmpty(clicked)) {
         if (button === 2) {
           // Right click: pick up half
           const half = Math.ceil(clicked.count / 2);
           dispatch({ type: 'PICK_HALF', source, index });
-          setHeldItem({ type: clicked.type, count: half });
+          setHeldItem({ itemId: clicked.itemId, count: half });
         } else {
           // Left click: pick up all
           dispatch({ type: 'CLICK_SLOT', source, index, heldItem: null });
@@ -340,7 +335,7 @@ export function Game() {
   // Drag end: distribute held item across slots
   const handleDragEnd = useCallback((slots: { source: 'hotbar' | 'backpack'; index: number }[], button: number) => {
     const held = heldItemRef.current;
-    if (!held || held.type === BlockType.AIR || slots.length === 0) return;
+    if (!held || isSlotEmpty(held) || slots.length === 0) return;
     if (button === 0) {
       dispatch({ type: 'DISTRIBUTE_LEFT', slots, heldItem: held });
       const perSlot = Math.floor(held.count / slots.length);
@@ -357,8 +352,8 @@ export function Game() {
 
   // Close backpack: drop held item back into first empty slot, then lock pointer
   const closeBackpack = useCallback(() => {
-    if (heldItem) {
-      dispatch({ type: 'ADD_TO_BACKPACK', blockType: heldItem.type, count: heldItem.count });
+    if (heldItem && !isSlotEmpty(heldItem)) {
+      dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItem.itemId, count: heldItem.count });
       setHeldItem(null);
     }
     setIsBackpackOpen(false);
@@ -370,9 +365,13 @@ export function Game() {
     if (!containerRef.current) return;
     const engine = new GameEngine(containerRef.current);
     engineRef.current = engine;
-    engine.getPlayer().setGetSelectedBlock(() => {
-      return hotbarRef.current[selectedSlotRef.current].type;
+
+    // Wire player inventory callbacks
+    engine.getPlayer().setGetSelectedItemId(() => {
+      const slot = hotbarRef.current[selectedSlotRef.current];
+      return slot?.itemId ?? EMPTY_ITEM_ID;
     });
+
     engine.start();
     return () => { engine.dispose(); engineRef.current = null; };
   }, []);
@@ -395,8 +394,8 @@ export function Game() {
             setBackpackTab('inventory');
           } else {
             // Closing: drop held item
-            if (heldItemRef.current) {
-              dispatch({ type: 'ADD_TO_BACKPACK', blockType: heldItemRef.current.type, count: heldItemRef.current.count });
+            if (heldItemRef.current && !isSlotEmpty(heldItemRef.current)) {
+              dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItemRef.current.itemId, count: heldItemRef.current.count });
               setHeldItem(null);
             }
             setTimeout(() => engineRef.current?.requestPointerLock(), 50);
@@ -428,9 +427,6 @@ export function Game() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const heldItemRef = useRef(heldItem);
-  heldItemRef.current = heldItem;
-
   // Scroll wheel
   useEffect(() => {
     const onWheel = (e: WheelEvent) => {
@@ -443,9 +439,6 @@ export function Game() {
     document.addEventListener('wheel', onWheel, { passive: true });
     return () => document.removeEventListener('wheel', onWheel);
   }, []);
-
-  const isBackpackOpenRef = useRef(isBackpackOpen);
-  isBackpackOpenRef.current = isBackpackOpen;
 
   return (
     <div
@@ -513,7 +506,7 @@ export function Game() {
       )}
 
       {/* Held item following cursor */}
-      {heldItem && heldItem.type !== BlockType.AIR && (
+      {heldItem && !isSlotEmpty(heldItem) && (
         <div
           className="held-item"
           style={{
@@ -521,7 +514,7 @@ export function Game() {
             top: mousePos.y,
           }}
         >
-          <BlockCube blockType={heldItem.type} size={24} />
+          <BlockCube itemId={heldItem.itemId} size={24} />
           {heldItem.count > 1 && (
             <span className="count">{heldItem.count}</span>
           )}

@@ -1,12 +1,7 @@
 import { useRef } from 'react';
-import { BlockType, ALL_BLOCKS } from '../game/blocks';
+import { type Slot, EMPTY_ITEM_ID, isSlotEmpty, ITEM_REGISTRY } from '../game/items';
 import { BlockCube } from './BlockCube';
 import './Inventory.css';
-
-interface Slot {
-  type: BlockType;
-  count: number;
-}
 
 export type BackpackTab = 'inventory' | 'creative';
 
@@ -45,7 +40,7 @@ export function Backpack({
     e.stopPropagation();
 
     // If holding an item and not shift-clicking, start drag (defer click to mouseup)
-    if (heldItem && heldItem.type !== BlockType.AIR && !e.shiftKey && index >= 0) {
+    if (heldItem && !isSlotEmpty(heldItem) && !e.shiftKey && index >= 0) {
       dragRef.current = {
         active: true,
         button: e.button,
@@ -85,10 +80,13 @@ export function Backpack({
 
   const renderSlot = (slot: Slot) => (
     <>
-      {slot.type !== 0 && <BlockCube blockType={slot.type} size={22} />}
+      {!isSlotEmpty(slot) && <BlockCube itemId={slot.itemId} size={22} />}
       {slot.count > 1 && <span className="count">{slot.count}</span>}
     </>
   );
+
+  // Creative tab: all items from registry
+  const allItems = ITEM_REGISTRY.allItems;
 
   return (
     <div className="inv-overlay" onClick={onClose} onMouseUp={handleMouseUp}>
@@ -126,9 +124,9 @@ export function Backpack({
             <>
               <div className="creative-grid-wrap">
                 <div className="inv-grid inv-grid-9">
-                  {ALL_BLOCKS.map((bt) => (
-                    <div key={bt} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', -1 - bt)} onContextMenu={(e) => e.preventDefault()}>
-                      <BlockCube blockType={bt} size={22} />
+                  {allItems.map((item) => (
+                    <div key={item.id} className="inv-slot" onMouseDown={(e) => handleMouseDown(e, 'backpack', -1 - item.id)} onContextMenu={(e) => e.preventDefault()}>
+                      <BlockCube itemId={item.id} size={22} />
                     </div>
                   ))}
                 </div>
