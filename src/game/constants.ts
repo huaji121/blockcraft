@@ -11,3 +11,7 @@ export const PLAYER_WIDTH = 0.6;
 export const MOUSE_SENSITIVITY = 0.002;
 export const CROUCH_HEIGHT = 1.5;
 export const CROUCH_SPEED_MULT = 0.3;
+export const SPRINT_SPEED_MULT = 1.3;
+export const DOUBLE_TAP_WINDOW = 300; // ms for double-tap W detection
+export const DEFAULT_FOV = 75;
+export const SPRINT_FOV = 85;

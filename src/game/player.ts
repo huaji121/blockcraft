@@ -8,6 +8,8 @@ import {
   GRAVITY, JUMP_SPEED, PLAYER_SPEED,
   PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY,
   CROUCH_HEIGHT, CROUCH_SPEED_MULT,
+  SPRINT_SPEED_MULT, DOUBLE_TAP_WINDOW,
+  DEFAULT_FOV, SPRINT_FOV,
 } from './constants';
 
 export class Player {
@@ -20,6 +22,8 @@ export class Player {
   private keys: Set<string> = new Set();
   private isGrounded: boolean = false;
   private isCrouching: boolean = false;
+  private isSprinting: boolean = false;
+  private lastWPressTime: number = 0;
   private currentHeight: number = PLAYER_HEIGHT;
   private world: World;
   private isPointerLocked: boolean = false;
@@ -98,6 +102,15 @@ export class Player {
     document.addEventListener('keydown', (e) => {
       if (this.uiOpen) return;
       this.keys.add(e.code);
+
+      // Double-tap W detection for sprint (ignore key repeat)
+      if (e.code === 'KeyW' && !e.repeat) {
+        const now = performance.now();
+        if (now - this.lastWPressTime < DOUBLE_TAP_WINDOW) {
+          this.isSprinting = true;
+        }
+        this.lastWPressTime = now;
+      }
     });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
@@ -160,6 +173,16 @@ export class Player {
     const kb = DEFAULT_KEYBINDS;
     this.isCrouching = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
 
+    // Ctrl+W = sprint, or keep sprinting if W is held from double-tap
+    const ctrlSprint = this.keys.has('ControlLeft') && this.keys.has('KeyW');
+    if (ctrlSprint) {
+      this.isSprinting = true;
+    }
+    // Stop sprinting if W is released or crouching
+    if (!this.keys.has('KeyW') || this.isCrouching) {
+      this.isSprinting = false;
+    }
+
     // Smoothly adjust height for crouching
     const targetHeight = this.isCrouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
     this.currentHeight += (targetHeight - this.currentHeight) * Math.min(1, dt * 15);
@@ -170,7 +193,9 @@ export class Player {
     if (this.keys.has(kb.moveLeft)) moveDir.sub(right);
     if (this.keys.has(kb.moveRight)) moveDir.add(right);
 
-    const speed = this.isCrouching ? PLAYER_SPEED * CROUCH_SPEED_MULT : PLAYER_SPEED;
+    let speed = PLAYER_SPEED;
+    if (this.isCrouching) speed *= CROUCH_SPEED_MULT;
+    else if (this.isSprinting) speed *= SPRINT_SPEED_MULT;
     if (moveDir.length() > 0) {
       moveDir.normalize().multiplyScalar(speed);
     }
@@ -189,6 +214,11 @@ export class Player {
 
     this.camera.position.copy(this.position);
     this.camera.position.y += this.currentHeight * 0.9;
+
+    // Smoothly interpolate FOV for sprinting
+    const targetFov = this.isSprinting ? SPRINT_FOV : DEFAULT_FOV;
+    this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 8);
+    this.camera.updateProjectionMatrix();
 
     const lookDir = new THREE.Vector3(
       -Math.sin(this.yaw) * Math.cos(this.pitch),

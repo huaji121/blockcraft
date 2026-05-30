@@ -4,6 +4,7 @@ import { Player } from './player';
 import { ParticleManager } from './particles';
 import { EntityManager } from './entities';
 import { BLOCK_DATA, getBlockFaceTexture } from './blocks';
+import { DEFAULT_FOV } from './constants';
 
 export interface EngineSettings {
   fpsLimit: number;      // 0 = unlimited
@@ -46,7 +47,7 @@ export class GameEngine {
     this.scene.fog = new THREE.Fog(0x87ceeb, 80, 140);
 
     this.camera = new THREE.PerspectiveCamera(
-      75,
+      DEFAULT_FOV,
       window.innerWidth / window.innerHeight,
       0.1,
       200
