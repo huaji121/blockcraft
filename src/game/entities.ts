@@ -491,12 +491,26 @@ export class EntityManager {
         aAABB.maxZ = a.position.z + a.width / 2;
       }
 
-      // Block collision check: if entity is now inside a block, revert X/Z
+      // Block collision check: if entity is now inside a block, try reverting each axis
       const saved = savedPositions.get(a)!;
       if (a.collides(this.getBlockRef)) {
-        a.position.x = saved.x;
+        const curX = a.position.x;
+        const curZ = a.position.z;
+        // Try keeping only the new X
         a.position.z = saved.z;
-        // Don't revert Y — stacking on entities is valid
+        const xBlocked = a.collides(this.getBlockRef);
+        // Try keeping only the new Z
+        a.position.x = curX;
+        a.position.z = curZ;
+        a.position.x = saved.x;
+        const zBlocked = a.collides(this.getBlockRef);
+        // Restore both
+        a.position.x = curX;
+        a.position.z = curZ;
+        // Revert blocked axes
+        if (xBlocked) a.position.x = saved.x;
+        if (zBlocked) a.position.z = saved.z;
+        // If still in block after reverting both axes, revert Y
         if (a.collides(this.getBlockRef)) {
           a.position.y = saved.y;
         }
@@ -560,20 +574,24 @@ export class EntityManager {
       }
     }
 
-    // Lateral push — both move half the overlap along minimum penetration axis
+    // Lateral push — push along center-to-center direction
     const dx = a.position.x - b.position.x;
     const dz = a.position.z - b.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
 
-    if (overlap.x <= overlap.z) {
-      const push = overlap.x * 0.5;
-      const sign = dx >= 0 ? 1 : -1;
-      a.position.x += sign * push;
-      b.position.x -= sign * push;
+    if (dist > 0.001) {
+      const nx = dx / dist;
+      const nz = dz / dist;
+      // Total push magnitude: use the smaller overlap to avoid over-pushing
+      const push = Math.min(overlap.x, overlap.z) * 0.5;
+      a.position.x += nx * push;
+      a.position.z += nz * push;
+      b.position.x -= nx * push;
+      b.position.z -= nz * push;
     } else {
-      const push = overlap.z * 0.5;
-      const sign = dz >= 0 ? 1 : -1;
-      a.position.z += sign * push;
-      b.position.z -= sign * push;
+      // Overlapping perfectly — push along X
+      a.position.x += overlap.x * 0.25;
+      b.position.x -= overlap.x * 0.25;
     }
   }
 
