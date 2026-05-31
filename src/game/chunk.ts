@@ -13,6 +13,31 @@ export class Chunk {
   // Face solidity: [0]=+Y, [1]=-Y, [2]=+X, [3]=-X, [4]=+Z, [5]=-Z
   public faceSolid: boolean[] = [false, false, false, false, false, false];
 
+  // Shared materials — reused across all chunks to avoid per-chunk material creation
+  static opaqueMaterial: THREE.MeshLambertMaterial;
+  static transparentMaterial: THREE.MeshLambertMaterial;
+
+  static initMaterials(atlas: TextureAtlas): void {
+    const tex = atlas.getTexture();
+    Chunk.opaqueMaterial = new THREE.MeshLambertMaterial({
+      map: tex,
+      side: THREE.FrontSide,
+      transparent: false,
+      alphaTest: 0.1,
+    });
+    Chunk.transparentMaterial = new THREE.MeshLambertMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5,
+      alphaTest: 0.1,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+  }
+
   constructor(cx: number, cy: number, cz: number) {
     this.cx = cx;
     this.cy = cy;
@@ -49,60 +74,65 @@ export class Chunk {
     const wy0 = this.cy * S;
     const wz0 = this.cz * S;
 
-    const isSolidFace = (
-      faceBlocks: { bx: number; by: number; bz: number; nx: number; ny: number; nz: number }[]
-    ): boolean => {
-      for (const { bx, by, bz, nx, ny, nz } of faceBlocks) {
-        const block = this.blocks[this.idx(bx, by, bz)];
-        if (BLOCK_DATA[block].transparent) return false;
-        const neighbor = getNeighborBlock(nx, ny, nz);
-        if (BLOCK_DATA[neighbor].transparent) return false;
-      }
-      return true;
-    };
-
     // +Y face (y = S-1): check block at y=S-1 and neighbor at y=S
-    this.faceSolid[0] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const x = i % S, z = Math.floor(i / S);
-        return { bx: x, by: S - 1, bz: z, nx: wx0 + x, ny: wy0 + S, nz: wz0 + z };
-      })
-    );
-    // -Y face (y = 0): check block at y=0 and neighbor at y=-1
-    this.faceSolid[1] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const x = i % S, z = Math.floor(i / S);
-        return { bx: x, by: 0, bz: z, nx: wx0 + x, ny: wy0 - 1, nz: wz0 + z };
-      })
-    );
+    let solid = true;
+    for (let x = 0; x < S && solid; x++) {
+      for (let z = 0; z < S && solid; z++) {
+        if (BLOCK_DATA[this.blocks[this.idx(x, S - 1, z)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 + x, wy0 + S, wz0 + z)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[0] = solid;
+
+    // -Y face (y = 0)
+    solid = true;
+    for (let x = 0; x < S && solid; x++) {
+      for (let z = 0; z < S && solid; z++) {
+        if (BLOCK_DATA[this.blocks[this.idx(x, 0, z)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 + x, wy0 - 1, wz0 + z)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[1] = solid;
+
     // +X face (x = S-1)
-    this.faceSolid[2] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const y = i % S, z = Math.floor(i / S);
-        return { bx: S - 1, by: y, bz: z, nx: wx0 + S, ny: wy0 + y, nz: wz0 + z };
-      })
-    );
+    solid = true;
+    for (let y = 0; y < S && solid; y++) {
+      for (let z = 0; z < S && solid; z++) {
+        if (BLOCK_DATA[this.blocks[this.idx(S - 1, y, z)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 + S, wy0 + y, wz0 + z)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[2] = solid;
+
     // -X face (x = 0)
-    this.faceSolid[3] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const y = i % S, z = Math.floor(i / S);
-        return { bx: 0, by: y, bz: z, nx: wx0 - 1, ny: wy0 + y, nz: wz0 + z };
-      })
-    );
+    solid = true;
+    for (let y = 0; y < S && solid; y++) {
+      for (let z = 0; z < S && solid; z++) {
+        if (BLOCK_DATA[this.blocks[this.idx(0, y, z)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 - 1, wy0 + y, wz0 + z)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[3] = solid;
+
     // +Z face (z = S-1)
-    this.faceSolid[4] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const x = i % S, y = Math.floor(i / S);
-        return { bx: x, by: y, bz: S - 1, nx: wx0 + x, ny: wy0 + y, nz: wz0 + S };
-      })
-    );
+    solid = true;
+    for (let x = 0; x < S && solid; x++) {
+      for (let y = 0; y < S && solid; y++) {
+        if (BLOCK_DATA[this.blocks[this.idx(x, y, S - 1)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 + x, wy0 + y, wz0 + S)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[4] = solid;
+
     // -Z face (z = 0)
-    this.faceSolid[5] = isSolidFace(
-      Array.from({ length: S * S }, (_, i) => {
-        const x = i % S, y = Math.floor(i / S);
-        return { bx: x, by: y, bz: 0, nx: wx0 + x, ny: wy0 + y, nz: wz0 - 1 };
-      })
-    );
+    solid = true;
+    for (let x = 0; x < S && solid; x++) {
+      for (let y = 0; y < S && solid; y++) {
+        if (BLOCK_DATA[this.blocks[this.idx(x, y, 0)]].transparent) { solid = false; break; }
+        if (BLOCK_DATA[getNeighborBlock(wx0 + x, wy0 + y, wz0 - 1)].transparent) { solid = false; break; }
+      }
+    }
+    this.faceSolid[5] = solid;
   }
 
   private getTextureForFace(block: BlockType, faceDir: [number, number, number]): string {
@@ -228,17 +258,7 @@ export class Chunk {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setIndex(idx);
 
-    const material = new THREE.MeshLambertMaterial({
-      map: atlas.getTexture(),
-      side: transparent ? THREE.DoubleSide : THREE.FrontSide,
-      transparent,
-      opacity: transparent ? 0.5 : 1,
-      alphaTest: 0.1,
-      depthWrite: !transparent,
-      polygonOffset: transparent,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-    });
+    const material = transparent ? Chunk.transparentMaterial : Chunk.opaqueMaterial;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(
@@ -254,11 +274,7 @@ export class Chunk {
   disposeMeshes(): void {
     for (const mesh of this.meshes) {
       mesh.geometry.dispose();
-      if (Array.isArray(mesh.material)) {
-        mesh.material.forEach(m => m.dispose());
-      } else {
-        mesh.material.dispose();
-      }
+      // Don't dispose material — shared across all chunks via static fields
     }
     this.meshes = [];
   }

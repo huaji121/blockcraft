@@ -72,7 +72,7 @@ export class Player {
   constructor(camera: THREE.PerspectiveCamera, world: World) {
     this.camera = camera;
     this.world = world;
-    this.position = new THREE.Vector3(0, 80, 0);
+    this.position = new THREE.Vector3(0, 65, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
 
     const highlightGeo = new THREE.BoxGeometry(1.005, 1.005, 1.005);

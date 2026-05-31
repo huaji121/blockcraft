@@ -10,6 +10,7 @@ export interface EngineSettings {
   fpsLimit: number;      // 0 = unlimited
   chunksPerFrame: number;
   renderDistance: number;
+  fogDensity: number;    // 0 = no fog, 100 = heavy fog
 }
 
 export type ItemPickupCallback = (itemId: number, count: number) => boolean;
@@ -26,7 +27,7 @@ export class GameEngine {
   private lastFrameTime: number = 0;
   private running: boolean = false;
   private container: HTMLElement;
-  private settings: EngineSettings = { fpsLimit: 0, chunksPerFrame: 8, renderDistance: 8 };
+  private settings: EngineSettings = { fpsLimit: 0, chunksPerFrame: 8, renderDistance: 8, fogDensity: 40 };
   private wireframeEnabled: boolean = false;
 
   // FPS tracking
@@ -134,6 +135,10 @@ export class GameEngine {
 
   setOnItemPickup(fn: ItemPickupCallback): void {
     this.entityManager.setOnItemPickup(fn);
+  }
+
+  getEntities() {
+    return this.entityManager.getEntities();
   }
 
   /** Throw an item from the player's position in the look direction */

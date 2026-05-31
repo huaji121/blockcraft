@@ -233,12 +233,20 @@ export class DroppedItem extends Entity {
     this.mesh.position.y += DROP_SIZE / 2;
     scene.add(this.mesh);
 
-    // Give a small random upward velocity
+    // Deterministic velocity based on position + itemId
+    const seed = this.dropHash(position.x, position.y, position.z, itemId);
     this.velocity.set(
-      (Math.random() - 0.5) * 2,
-      3 + Math.random() * 2,
-      (Math.random() - 0.5) * 2,
+      ((seed & 0xff) / 255 - 0.5) * 2,
+      3 + ((seed >> 8 & 0xff) / 255) * 2,
+      ((seed >> 16 & 0xff) / 255 - 0.5) * 2,
     );
+  }
+
+  /** Deterministic hash for drop velocity */
+  private dropHash(x: number, y: number, z: number, id: number): number {
+    let h = ((x * 1097) | 0) ^ ((y * 1549) | 0) ^ ((z * 2039) | 0) ^ ((id * 3571) | 0);
+    h = ((h ^ (h >> 13)) * 2654435761) | 0;
+    return h >>> 0;
   }
 
   // Immune to damage

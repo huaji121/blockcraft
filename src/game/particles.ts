@@ -64,7 +64,6 @@ export class ParticleManager {
 
   /** Spawn red death particles spraying outward from a point */
   spawnDeathEffect(x: number, y: number, z: number): void {
-    const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
     for (let i = 0; i < 20; i++) {
       const material = new THREE.MeshLambertMaterial({
         color: 0xcc0000,
@@ -73,7 +72,7 @@ export class ParticleManager {
         depthWrite: false,
       });
 
-      const mesh = new THREE.Mesh(geo, material);
+      const mesh = new THREE.Mesh(this.sharedGeo, material);
       mesh.position.set(x, y + 0.6, z);
 
       // Spray outward in all directions

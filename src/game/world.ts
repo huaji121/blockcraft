@@ -38,6 +38,7 @@ export class World {
 
     this.atlas = new TextureAtlas(this.loader);
     this.atlas.build([...paths], () => {
+      Chunk.initMaterials(this.atlas);
       this.ready = true;
       for (const chunk of this.chunks.values()) chunk.dirty = true;
     });
@@ -124,8 +125,38 @@ export class World {
         }
       }
     }
+
+    // Ore generation: simple hash-based placement in stone layers
+    for (let x = 0; x < CHUNK_SIZE; x++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        const wx = worldX0 + x;
+        const wz = worldZ0 + z;
+        const surfaceHeight = this.noise.getHeight(wx, wz);
+        for (let y = 0; y < CHUNK_SIZE; y++) {
+          const wy = worldY0 + y;
+          if (wy >= surfaceHeight - 3) continue; // only in stone layer
+          const h = this.oreHash(wx, wy, wz);
+          if (wy < 16 && h < 8) {
+            chunk.setBlock(x, y, z, BlockType.DIAMOND_ORE);
+          } else if (wy < 32 && h < 16) {
+            chunk.setBlock(x, y, z, BlockType.GOLD_ORE);
+          } else if (wy < 48 && h < 24) {
+            chunk.setBlock(x, y, z, BlockType.IRON_ORE);
+          } else if (h < 32) {
+            chunk.setBlock(x, y, z, BlockType.COAL_ORE);
+          }
+        }
+      }
+    }
     chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     return chunk;
+  }
+
+  /** Simple hash for ore placement — deterministic from world coordinates */
+  private oreHash(x: number, y: number, z: number): number {
+    let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0;
+    h = ((h ^ (h >> 13)) * 1103515245) | 0;
+    return ((h ^ (h >> 16)) & 0x7fffffff) % 1000;
   }
 
   private rebuildChunk(chunk: Chunk): void {

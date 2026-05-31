@@ -583,14 +583,10 @@ export function Game() {
           }
         },
         killEntities: () => {
-          engine.getWorld(); // entities are managed by engine
-          // Kill all entities through entity manager
-          const entities = engine.getPlayer()['entityManager']?.getEntities?.();
-          if (entities) {
-            for (let i = entities.length - 1; i >= 0; i--) {
-              if (!entities[i].constructor.name.includes('DroppedItem')) {
-                entities[i].hp = 0;
-              }
+          const entities = engine.getEntities();
+          for (let i = entities.length - 1; i >= 0; i--) {
+            if (!entities[i].constructor.name.includes('DroppedItem')) {
+              entities[i].hp = 0;
             }
           }
         },
