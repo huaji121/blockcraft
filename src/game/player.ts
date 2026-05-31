@@ -96,8 +96,14 @@ export class Player extends Entity {
     this.height = PLAYER_HEIGHT;
     this.pushForce = 0; // player doesn't push via force — collision handles it
 
-    // Hide the entity mesh (first-person camera)
+    // Player model: purple cube matching collision box size
+    this.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    const playerGeo = new THREE.BoxGeometry(PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_WIDTH);
+    const playerMat = new THREE.MeshLambertMaterial({ color: 0x9933cc });
+    this.mesh = new THREE.Mesh(playerGeo, playerMat);
     this.mesh.visible = false;
+    scene.add(this.mesh);
 
     const highlightGeo = new THREE.BoxGeometry(1.005, 1.005, 1.005);
     const highlightEdges = new THREE.EdgesGeometry(highlightGeo);
@@ -385,6 +391,9 @@ export class Player extends Entity {
     } else {
       this.bobAmplitude = Math.max(0, this.bobAmplitude - dt * 5);
     }
+
+    // Show player model in third person, hide in first person
+    this.mesh.visible = this.perspective !== 0;
 
     // Camera position based on perspective mode
     const eyeY = this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
