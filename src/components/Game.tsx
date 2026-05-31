@@ -389,6 +389,7 @@ export function Game() {
       dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItem.itemId, count: heldItem.count });
       setHeldItem(null);
     }
+    setHoveredSlot(null);
     setIsBackpackOpen(false);
     setTimeout(() => engineRef.current?.requestPointerLock(), 50);
   }, [heldItem]);
@@ -446,6 +447,7 @@ export function Game() {
             dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItemRef.current.itemId, count: heldItemRef.current.count });
             setHeldItem(null);
           }
+          setHoveredSlot(null);
           setIsBackpackOpen(false);
           setTimeout(() => engineRef.current?.requestPointerLock(), 50);
         } else if (showSettingsRef.current) {
@@ -475,6 +477,7 @@ export function Game() {
               dispatch({ type: 'ADD_TO_BACKPACK', itemId: heldItemRef.current.itemId, count: heldItemRef.current.count });
               setHeldItem(null);
             }
+            setHoveredSlot(null);
             setTimeout(() => engineRef.current?.requestPointerLock(), 50);
           }
           return !prev;
