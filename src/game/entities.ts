@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ITEM_REGISTRY } from './items';
 import { BLOCK_DATA } from './blocks';
 import type { ParticleManager } from './particles';
+import { ENTITY_PUSH_FORCE, PLAYER_PUSH_FORCE } from './constants';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -25,6 +26,7 @@ export class Entity {
   public mesh: THREE.Mesh;
   public width: number = ENTITY_WIDTH;
   public height: number = ENTITY_HEIGHT;
+  public pushForce: number = ENTITY_PUSH_FORCE;
 
   private flashUntil: number = 0;
   private originalColor: THREE.Color;
@@ -154,6 +156,19 @@ export class Entity {
     return false;
   }
 
+  /** Get the entity's axis-aligned bounding box */
+  getAABB(): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
+    const halfW = this.width / 2;
+    return {
+      minX: this.position.x - halfW,
+      maxX: this.position.x + halfW,
+      minY: this.position.y,
+      maxY: this.position.y + this.height,
+      minZ: this.position.z - halfW,
+      maxZ: this.position.z + halfW,
+    };
+  }
+
   dispose(): void {
     this.scene.remove(this.mesh);
     this.mesh.geometry.dispose();
@@ -203,6 +218,7 @@ export class DroppedItem extends Entity {
     this.itemId = itemId;
     this.count = count;
     this.spawnTime = performance.now();
+    this.pushForce = 0; // dropped items don't push anything
 
     // Build per-face materials: [+X, -X, +Y, -Y, +Z, -Z]
     const item = ITEM_REGISTRY.getById(itemId);
@@ -396,6 +412,83 @@ export class EntityManager {
         }
         entity.dispose();
         this.entities.splice(i, 1);
+      }
+    }
+  }
+
+  /** Handle entity-entity and player-entity AABB collisions with pushing */
+  handleEntityCollisions(
+    playerAABB: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number },
+    dt: number,
+  ): void {
+    const liveEntities = this.entities.filter(e => !(e instanceof DroppedItem));
+
+    // Entity vs Entity
+    for (let i = 0; i < liveEntities.length; i++) {
+      for (let j = i + 1; j < liveEntities.length; j++) {
+        const a = liveEntities[i];
+        const b = liveEntities[j];
+        const aAABB = a.getAABB();
+        const bAABB = b.getAABB();
+
+        // Quick AABB overlap check
+        if (aAABB.maxX <= bAABB.minX || aAABB.minX >= bAABB.maxX) continue;
+        if (aAABB.maxY <= bAABB.minY || aAABB.minY >= bAABB.maxY) continue;
+        if (aAABB.maxZ <= bAABB.minZ || aAABB.minZ >= bAABB.maxZ) continue;
+
+        // Compute overlap on each axis
+        const overlapX = Math.min(aAABB.maxX - bAABB.minX, bAABB.maxX - aAABB.minX);
+        const overlapY = Math.min(aAABB.maxY - bAABB.minY, bAABB.maxY - aAABB.minY);
+        const overlapZ = Math.min(aAABB.maxZ - bAABB.minZ, bAABB.maxZ - aAABB.minZ);
+
+        // Push along the axis of least overlap (minimum translation vector)
+        const totalPush = a.pushForce + b.pushForce;
+        if (totalPush === 0) continue;
+        const aRatio = a.pushForce / totalPush;
+        const bRatio = b.pushForce / totalPush;
+
+        if (overlapX <= overlapY && overlapX <= overlapZ) {
+          const sign = a.position.x < b.position.x ? -1 : 1;
+          const push = overlapX * 0.5;
+          a.position.x += sign * push * aRatio;
+          b.position.x -= sign * push * bRatio;
+        } else if (overlapY <= overlapX && overlapY <= overlapZ) {
+          const sign = a.position.y < b.position.y ? -1 : 1;
+          const push = overlapY * 0.5;
+          a.position.y += sign * push * aRatio;
+          b.position.y -= sign * push * bRatio;
+        } else {
+          const sign = a.position.z < b.position.z ? -1 : 1;
+          const push = overlapZ * 0.5;
+          a.position.z += sign * push * aRatio;
+          b.position.z -= sign * push * bRatio;
+        }
+      }
+    }
+
+    // Player vs Entity: push entities away from player
+    for (const entity of this.entities) {
+      const eAABB = entity.getAABB();
+
+      if (playerAABB.maxX <= eAABB.minX || playerAABB.minX >= eAABB.maxX) continue;
+      if (playerAABB.maxY <= eAABB.minY || playerAABB.minY >= eAABB.maxY) continue;
+      if (playerAABB.maxZ <= eAABB.minZ || playerAABB.minZ >= eAABB.maxZ) continue;
+
+      const overlapX = Math.min(playerAABB.maxX - eAABB.minX, eAABB.maxX - playerAABB.minX);
+      const overlapY = Math.min(playerAABB.maxY - eAABB.minY, eAABB.maxY - playerAABB.minY);
+      const overlapZ = Math.min(playerAABB.maxZ - eAABB.minZ, eAABB.maxZ - playerAABB.minZ);
+
+      const pushForce = PLAYER_PUSH_FORCE * dt;
+
+      if (overlapX <= overlapY && overlapX <= overlapZ) {
+        const sign = playerAABB.minX < eAABB.minX ? 1 : -1;
+        entity.velocity.x += sign * pushForce;
+      } else if (overlapY <= overlapX && overlapY <= overlapZ) {
+        const sign = playerAABB.minY < eAABB.minY ? 1 : -1;
+        entity.velocity.y += sign * pushForce;
+      } else {
+        const sign = playerAABB.minZ < eAABB.minZ ? 1 : -1;
+        entity.velocity.z += sign * pushForce;
       }
     }
   }

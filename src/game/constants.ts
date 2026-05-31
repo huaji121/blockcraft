@@ -17,3 +17,7 @@ export const SPRINT_SPEED_MULT = 1.3;
 export const DOUBLE_TAP_WINDOW = 300;
 export const DEFAULT_FOV = 75;
 export const SPRINT_FOV = 85;
+
+// Entity-entity collision
+export const ENTITY_PUSH_FORCE = 500;
+export const PLAYER_PUSH_FORCE = 800;

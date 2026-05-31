@@ -102,6 +102,19 @@ export class Player {
     return this.highlightMesh;
   }
 
+  /** Get the player's axis-aligned bounding box */
+  getAABB(): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
+    const halfW = PLAYER_WIDTH / 2;
+    return {
+      minX: this.position.x - halfW,
+      maxX: this.position.x + halfW,
+      minY: this.position.y,
+      maxY: this.position.y + this.currentHeight,
+      minZ: this.position.z - halfW,
+      maxZ: this.position.z + halfW,
+    };
+  }
+
   private setupControls(): void {
     document.addEventListener('keydown', (e) => {
       if (this.uiOpen) return;
