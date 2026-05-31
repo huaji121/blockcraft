@@ -22,6 +22,7 @@ export interface KeyBindings {
   hotbar8: string;
   hotbar9: string;
   debugOverlay: string;
+  togglePerspective: string;
   settings: string;
 }
 
@@ -46,6 +47,7 @@ export const DEFAULT_KEYBINDS: KeyBindings = {
   hotbar8: 'Digit8',
   hotbar9: 'Digit9',
   debugOverlay: 'F3',
+  togglePerspective: 'F4',
   settings: 'Escape',
 };
 

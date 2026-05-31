@@ -57,6 +57,9 @@ export class Player extends Entity {
   private destroyOverlay: THREE.Mesh;
   private destroyMaterials: THREE.MeshBasicMaterial[] = [];
 
+  // Camera perspective: 0=first person, 1=third person back, 2=third person front
+  public perspective: number = 0;
+
   // Abilities (default: creative mode)
   public flyEnabled: boolean = true;
   public isFlying: boolean = false;
@@ -248,6 +251,11 @@ export class Player extends Entity {
         }
         this.lastSpacePressTime = now;
       }
+
+      // F4: toggle perspective (first → third back → third front)
+      if (e.code === 'F4' && !e.repeat) {
+        this.perspective = (this.perspective + 1) % 3;
+      }
     });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
@@ -378,19 +386,41 @@ export class Player extends Entity {
       this.bobAmplitude = Math.max(0, this.bobAmplitude - dt * 5);
     }
 
-    this.camera.position.copy(this.position);
-    this.camera.position.y += this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
+    // Camera position based on perspective mode
+    const eyeY = this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
+    const headPos = new THREE.Vector3(this.position.x, this.position.y + eyeY, this.position.z);
+
+    if (this.perspective === 0) {
+      // First person
+      this.camera.position.copy(headPos);
+    } else {
+      // Third person (back or front)
+      const camDist = 4;
+      const camHeight = 2;
+      const dir = this.perspective === 1 ? -1 : 1; // back = -1, front = 1
+      this.camera.position.set(
+        headPos.x + Math.sin(this.yaw) * camDist * dir,
+        headPos.y + camHeight,
+        headPos.z + Math.cos(this.yaw) * camDist * dir,
+      );
+    }
 
     const targetFov = this.isSprinting ? SPRINT_FOV : DEFAULT_FOV;
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 8);
     this.camera.updateProjectionMatrix();
 
-    const lookDir = new THREE.Vector3(
-      -Math.sin(this.yaw) * Math.cos(this.pitch),
-      Math.sin(this.pitch),
-      -Math.cos(this.yaw) * Math.cos(this.pitch)
-    );
-    this.camera.lookAt(this.camera.position.clone().add(lookDir));
+    if (this.perspective === 0) {
+      // First person: look from head in look direction
+      const lookDir = new THREE.Vector3(
+        -Math.sin(this.yaw) * Math.cos(this.pitch),
+        Math.sin(this.pitch),
+        -Math.cos(this.yaw) * Math.cos(this.pitch)
+      );
+      this.camera.lookAt(headPos.clone().add(lookDir));
+    } else {
+      // Third person: always look at head
+      this.camera.lookAt(headPos);
+    }
 
     if (!this.uiOpen) {
       this.updateHighlight();
