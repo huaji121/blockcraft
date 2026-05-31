@@ -103,7 +103,7 @@ export class Entity {
       this.position.z
     );
 
-    return this.position.y < -50 || this.hp <= 0;
+    return this.hp <= 0;
   }
 
   private checkGrounded(getBlock: (x: number, y: number, z: number) => number): boolean {
