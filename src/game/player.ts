@@ -408,11 +408,26 @@ export class Player extends Entity {
       const dir = this.perspective === 1 ? -1 : 1; // back = -1, front = 1
       const cosP = Math.cos(this.pitch);
       const sinP = Math.sin(this.pitch);
-      this.camera.position.set(
+      const desiredPos = new THREE.Vector3(
         headPos.x + Math.sin(this.yaw) * cosP * camDist * dir,
         headPos.y + sinP * camDist + 1,
         headPos.z + Math.cos(this.yaw) * cosP * camDist * dir,
       );
+
+      // Raycast from head to desired camera position to avoid clipping into blocks
+      const rayDir = desiredPos.clone().sub(headPos);
+      const rayLen = rayDir.length();
+      if (rayLen > 0.01) {
+        const hit = this.world.raycast(headPos, rayDir.normalize(), rayLen);
+        if (hit) {
+          // Pull camera back to just before the hit block
+          const hitBlockCenter = new THREE.Vector3(hit.blockPos.x + 0.5, hit.blockPos.y + 0.5, hit.blockPos.z + 0.5);
+          const hitDist = headPos.distanceTo(hitBlockCenter) - 0.3;
+          desiredPos.copy(headPos).addScaledVector(rayDir, Math.max(0.5, hitDist));
+        }
+      }
+
+      this.camera.position.copy(desiredPos);
     }
 
     const targetFov = this.isSprinting ? SPRINT_FOV : DEFAULT_FOV;
