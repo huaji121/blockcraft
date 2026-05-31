@@ -596,6 +596,7 @@ export class Player extends Entity {
             hit.blockPos.z + 0.5,
           );
           this.entityManager.spawn(spawnPos);
+          this.onBlockPlace?.(selectedItemId);
           this.lastPlaceTime = now;
         }
         return;
