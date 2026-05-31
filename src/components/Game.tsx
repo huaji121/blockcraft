@@ -642,6 +642,15 @@ export function Game() {
             player.creativeBackpackEnabled = enabled;
           }
         },
+        setGamemode: (mode: number) => {
+          const creative = mode === 1;
+          player.instBreakEnabled = creative;
+          player.creativeBackpackEnabled = creative;
+          player.infItemEnabled = creative;
+          infItemRef.current = creative;
+          player.flyEnabled = creative;
+          if (!creative) player.isFlying = false;
+        },
       });
     } else {
       addChatMessage('Player', text);

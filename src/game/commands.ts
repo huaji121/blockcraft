@@ -9,6 +9,7 @@ export interface CommandContext {
   getPlayerPos: () => { x: number; y: number; z: number };
   setWireframe: (enabled: boolean) => void;
   setAbility: (name: string, enabled: boolean) => void;
+  setGamemode: (mode: number) => void;
 }
 
 interface Command {
@@ -152,6 +153,24 @@ const commands: Command[] = [
       }
       ctx.setAbility(abilityName, value === 1);
       ctx.addMessage('System', `${abilityName} ${value === 1 ? 'enabled' : 'disabled'}.`);
+    },
+  },
+  {
+    name: 'gamemode',
+    description: 'Set game mode',
+    usage: '/gamemode <0|1>  (0=survival, 1=creative)',
+    execute: (args, ctx) => {
+      if (args.length < 1) {
+        ctx.addMessage('System', 'Usage: /gamemode <0|1>  (0=survival, 1=creative)');
+        return;
+      }
+      const mode = parseInt(args[0]);
+      if (mode !== 0 && mode !== 1) {
+        ctx.addMessage('System', 'Value must be 0 (survival) or 1 (creative)');
+        return;
+      }
+      ctx.setGamemode(mode);
+      ctx.addMessage('System', `Gamemode set to ${mode === 1 ? 'creative' : 'survival'}.`);
     },
   },
 ];
