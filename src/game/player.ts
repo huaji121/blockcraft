@@ -394,6 +394,7 @@ export class Player extends Entity {
 
     // Show player model in third person, hide in first person
     this.mesh.visible = this.perspective !== 0;
+    this.mesh.rotation.y = this.yaw;
 
     // Camera position based on perspective mode
     const eyeY = this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
