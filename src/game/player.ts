@@ -63,6 +63,7 @@ export class Player extends Entity {
   private lastSpacePressTime: number = 0;
   public infItemEnabled: boolean = false;
   public instBreakEnabled: boolean = false;
+  public creativeBackpackEnabled: boolean = true;
 
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;

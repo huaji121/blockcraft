@@ -16,6 +16,7 @@ interface Props {
   onDragEnd: (slots: { source: 'hotbar' | 'backpack'; index: number }[], button: number) => void;
   onHoverSlot: (slot: { source: 'hotbar' | 'backpack'; index: number } | null) => void;
   onClose: () => void;
+  showCreative?: boolean;
 }
 
 export const DELETE_SLOT_INDEX = -100;
@@ -28,6 +29,7 @@ export function Backpack({
   hotbar, backpack, selected,
   tab, onTabChange, heldItem,
   onSlotClick, onDragEnd, onHoverSlot, onClose,
+  showCreative = true,
 }: Props) {
   const dragRef = useRef({
     active: false,
@@ -106,7 +108,9 @@ export function Backpack({
       <div className="inv-panel" onClick={(e) => e.stopPropagation()}>
         <div className="inv-tabs">
           <button className={`inv-tab ${tab === 'inventory' ? 'active' : ''}`} onClick={() => onTabChange('inventory')}>Inventory</button>
-          <button className={`inv-tab ${tab === 'creative' ? 'active' : ''}`} onClick={() => onTabChange('creative')}>Creative</button>
+          {showCreative && (
+            <button className={`inv-tab ${tab === 'creative' ? 'active' : ''}`} onClick={() => onTabChange('creative')}>Creative</button>
+          )}
         </div>
 
         <div className="backpack-body">

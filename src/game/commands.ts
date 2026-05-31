@@ -146,7 +146,7 @@ const commands: Command[] = [
         ctx.addMessage('System', 'Value must be 0 (off) or 1 (on)');
         return;
       }
-      if (abilityName !== 'fly' && abilityName !== 'infitem' && abilityName !== 'instbreak') {
+      if (abilityName !== 'fly' && abilityName !== 'infitem' && abilityName !== 'instbreak' && abilityName !== 'creativebackpack') {
         ctx.addMessage('System', `Unknown ability: ${args[0]}`);
         return;
       }

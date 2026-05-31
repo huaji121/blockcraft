@@ -638,6 +638,8 @@ export function Game() {
             infItemRef.current = enabled;
           } else if (name === 'instbreak') {
             player.instBreakEnabled = enabled;
+          } else if (name === 'creativebackpack') {
+            player.creativeBackpackEnabled = enabled;
           }
         },
       });
@@ -711,6 +713,7 @@ export function Game() {
           onDragEnd={handleDragEnd}
           onHoverSlot={setHoveredSlot}
           onClose={closeBackpack}
+          showCreative={engineRef.current?.getPlayer().creativeBackpackEnabled ?? true}
         />
       )}
 
