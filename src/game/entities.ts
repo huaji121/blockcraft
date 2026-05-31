@@ -420,7 +420,33 @@ export class EntityManager {
   handleEntityCollisions(
     playerAABB: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number },
     dt: number,
+    getBlock: (x: number, y: number, z: number) => number,
   ): void {
+    // Check if an entity at a given position would collide with blocks
+    const collidesBlocks = (entity: Entity, px: number, py: number, pz: number): boolean => {
+      const halfW = entity.width / 2;
+      const minX = Math.floor(px - halfW);
+      const maxX = Math.floor(px + halfW);
+      const minY = Math.floor(py);
+      const maxY = Math.floor(py + entity.height - 0.001);
+      const minZ = Math.floor(pz - halfW);
+      const maxZ = Math.floor(pz + halfW);
+      for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+          for (let z = minZ; z <= maxZ; z++) {
+            if (getBlock(x, y, z) !== 0) {
+              if (px + halfW > x && px - halfW < x + 1 &&
+                  py + entity.height > y && py < y + 1 &&
+                  pz + halfW > z && pz - halfW < z + 1) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+
     const liveEntities = this.entities.filter(e => !(e instanceof DroppedItem));
 
     // Entity vs Entity — push along center-to-center direction on XZ plane
@@ -431,7 +457,6 @@ export class EntityManager {
         const aAABB = a.getAABB();
         const bAABB = b.getAABB();
 
-        // Quick AABB overlap check
         if (aAABB.maxX <= bAABB.minX || aAABB.minX >= bAABB.maxX) continue;
         if (aAABB.maxY <= bAABB.minY || aAABB.minY >= bAABB.maxY) continue;
         if (aAABB.maxZ <= bAABB.minZ || aAABB.minZ >= bAABB.maxZ) continue;
@@ -447,10 +472,19 @@ export class EntityManager {
 
         // Vertical push (Y) — handle separately for stacking
         if (overlapY < overlapX && overlapY < overlapZ) {
-          const sign = a.position.y < b.position.y ? -1 : 1;
           const push = overlapY * 0.5;
-          a.position.y += sign * push * aRatio;
-          b.position.y -= sign * push * bRatio;
+          if (a.position.y < b.position.y) {
+            // a below b → push a down, b up
+            const aNewY = a.position.y - push * aRatio;
+            const bNewY = b.position.y + push * bRatio;
+            if (!collidesBlocks(a, a.position.x, aNewY, a.position.z)) a.position.y = aNewY;
+            if (!collidesBlocks(b, b.position.x, bNewY, b.position.z)) b.position.y = bNewY;
+          } else {
+            const aNewY = a.position.y + push * aRatio;
+            const bNewY = b.position.y - push * bRatio;
+            if (!collidesBlocks(a, a.position.x, aNewY, a.position.z)) a.position.y = aNewY;
+            if (!collidesBlocks(b, b.position.x, bNewY, b.position.z)) b.position.y = bNewY;
+          }
           continue;
         }
 
@@ -460,19 +494,27 @@ export class EntityManager {
         const dist = Math.sqrt(dx * dx + dz * dz);
 
         if (dist < 0.001) {
-          // Centers overlap exactly — push along X
           const push = Math.max(overlapX, overlapZ) * 0.5;
-          a.position.x -= push * aRatio;
-          b.position.x += push * bRatio;
+          const aNewX = a.position.x - push * aRatio;
+          const bNewX = b.position.x + push * bRatio;
+          if (!collidesBlocks(a, aNewX, a.position.y, a.position.z)) a.position.x = aNewX;
+          if (!collidesBlocks(b, bNewX, b.position.y, b.position.z)) b.position.x = bNewX;
         } else {
           const nx = dx / dist;
           const nz = dz / dist;
-          // Use the smaller overlap as push distance
           const push = Math.min(overlapX, overlapZ) * 0.5;
-          a.position.x -= nx * push * aRatio;
-          a.position.z -= nz * push * aRatio;
-          b.position.x += nx * push * bRatio;
-          b.position.z += nz * push * bRatio;
+          const aNewX = a.position.x - nx * push * aRatio;
+          const aNewZ = a.position.z - nz * push * aRatio;
+          const bNewX = b.position.x + nx * push * bRatio;
+          const bNewZ = b.position.z + nz * push * bRatio;
+          if (!collidesBlocks(a, aNewX, a.position.y, aNewZ)) {
+            a.position.x = aNewX;
+            a.position.z = aNewZ;
+          }
+          if (!collidesBlocks(b, bNewX, b.position.y, bNewZ)) {
+            b.position.x = bNewX;
+            b.position.z = bNewZ;
+          }
         }
       }
     }
@@ -485,7 +527,6 @@ export class EntityManager {
       if (playerAABB.maxY <= eAABB.minY || playerAABB.minY >= eAABB.maxY) continue;
       if (playerAABB.maxZ <= eAABB.minZ || playerAABB.minZ >= eAABB.maxZ) continue;
 
-      // Center-to-center direction (player → entity)
       const pcx = (playerAABB.minX + playerAABB.maxX) * 0.5;
       const pcz = (playerAABB.minZ + playerAABB.maxZ) * 0.5;
       const ecx = (eAABB.minX + eAABB.maxX) * 0.5;

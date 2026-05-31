@@ -199,7 +199,7 @@ export class GameEngine {
     this.player.update(dt);
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
     this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z), this.player.position);
-    this.entityManager.handleEntityCollisions(this.player.getAABB(), dt);
+    this.entityManager.handleEntityCollisions(this.player.getAABB(), dt, (x, y, z) => this.world.getBlock(x, y, z));
     this.particles.update(dt);
 
     // Re-apply wireframe after chunk rebuilds
