@@ -423,7 +423,7 @@ export class EntityManager {
   ): void {
     const liveEntities = this.entities.filter(e => !(e instanceof DroppedItem));
 
-    // Entity vs Entity
+    // Entity vs Entity — push along center-to-center direction on XZ plane
     for (let i = 0; i < liveEntities.length; i++) {
       for (let j = i + 1; j < liveEntities.length; j++) {
         const a = liveEntities[i];
@@ -436,37 +436,48 @@ export class EntityManager {
         if (aAABB.maxY <= bAABB.minY || aAABB.minY >= bAABB.maxY) continue;
         if (aAABB.maxZ <= bAABB.minZ || aAABB.minZ >= bAABB.maxZ) continue;
 
-        // Compute overlap on each axis
         const overlapX = Math.min(aAABB.maxX - bAABB.minX, bAABB.maxX - aAABB.minX);
         const overlapY = Math.min(aAABB.maxY - bAABB.minY, bAABB.maxY - aAABB.minY);
         const overlapZ = Math.min(aAABB.maxZ - bAABB.minZ, bAABB.maxZ - aAABB.minZ);
 
-        // Push along the axis of least overlap (minimum translation vector)
         const totalPush = a.pushForce + b.pushForce;
         if (totalPush === 0) continue;
         const aRatio = a.pushForce / totalPush;
         const bRatio = b.pushForce / totalPush;
 
-        if (overlapX <= overlapY && overlapX <= overlapZ) {
-          const sign = a.position.x < b.position.x ? -1 : 1;
-          const push = overlapX * 0.5;
-          a.position.x += sign * push * aRatio;
-          b.position.x -= sign * push * bRatio;
-        } else if (overlapY <= overlapX && overlapY <= overlapZ) {
+        // Vertical push (Y) — handle separately for stacking
+        if (overlapY < overlapX && overlapY < overlapZ) {
           const sign = a.position.y < b.position.y ? -1 : 1;
           const push = overlapY * 0.5;
           a.position.y += sign * push * aRatio;
           b.position.y -= sign * push * bRatio;
+          continue;
+        }
+
+        // Horizontal push (XZ) — along center-to-center direction
+        const dx = b.position.x - a.position.x;
+        const dz = b.position.z - a.position.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+
+        if (dist < 0.001) {
+          // Centers overlap exactly — push along X
+          const push = Math.max(overlapX, overlapZ) * 0.5;
+          a.position.x -= push * aRatio;
+          b.position.x += push * bRatio;
         } else {
-          const sign = a.position.z < b.position.z ? -1 : 1;
-          const push = overlapZ * 0.5;
-          a.position.z += sign * push * aRatio;
-          b.position.z -= sign * push * bRatio;
+          const nx = dx / dist;
+          const nz = dz / dist;
+          // Use the smaller overlap as push distance
+          const push = Math.min(overlapX, overlapZ) * 0.5;
+          a.position.x -= nx * push * aRatio;
+          a.position.z -= nz * push * aRatio;
+          b.position.x += nx * push * bRatio;
+          b.position.z += nz * push * bRatio;
         }
       }
     }
 
-    // Player vs Entity: push entities away from player
+    // Player vs Entity — push entity along player-to-entity direction
     for (const entity of this.entities) {
       const eAABB = entity.getAABB();
 
@@ -474,21 +485,22 @@ export class EntityManager {
       if (playerAABB.maxY <= eAABB.minY || playerAABB.minY >= eAABB.maxY) continue;
       if (playerAABB.maxZ <= eAABB.minZ || playerAABB.minZ >= eAABB.maxZ) continue;
 
-      const overlapX = Math.min(playerAABB.maxX - eAABB.minX, eAABB.maxX - playerAABB.minX);
-      const overlapY = Math.min(playerAABB.maxY - eAABB.minY, eAABB.maxY - playerAABB.minY);
-      const overlapZ = Math.min(playerAABB.maxZ - eAABB.minZ, eAABB.maxZ - playerAABB.minZ);
+      // Center-to-center direction (player → entity)
+      const pcx = (playerAABB.minX + playerAABB.maxX) * 0.5;
+      const pcz = (playerAABB.minZ + playerAABB.maxZ) * 0.5;
+      const ecx = (eAABB.minX + eAABB.maxX) * 0.5;
+      const ecz = (eAABB.minZ + eAABB.maxZ) * 0.5;
+      const dx = ecx - pcx;
+      const dz = ecz - pcz;
+      const dist = Math.sqrt(dx * dx + dz * dz);
 
       const pushForce = PLAYER_PUSH_FORCE * dt;
 
-      if (overlapX <= overlapY && overlapX <= overlapZ) {
-        const sign = playerAABB.minX < eAABB.minX ? 1 : -1;
-        entity.velocity.x += sign * pushForce;
-      } else if (overlapY <= overlapX && overlapY <= overlapZ) {
-        const sign = playerAABB.minY < eAABB.minY ? 1 : -1;
-        entity.velocity.y += sign * pushForce;
+      if (dist < 0.001) {
+        entity.velocity.x += pushForce;
       } else {
-        const sign = playerAABB.minZ < eAABB.minZ ? 1 : -1;
-        entity.velocity.z += sign * pushForce;
+        entity.velocity.x += (dx / dist) * pushForce;
+        entity.velocity.z += (dz / dist) * pushForce;
       }
     }
   }
