@@ -288,11 +288,30 @@ export function Game() {
   const showSettingsRef = useRef(showSettings);
   showSettingsRef.current = showSettings;
 
-  // Track mouse position for held item
+  // Track mouse position for held item (throttled via rAF)
   useEffect(() => {
-    const onMove = (e: MouseEvent) => setMousePos({ x: e.clientX, y: e.clientY });
+    let rafId = 0;
+    let pendingX = 0;
+    let pendingY = 0;
+    let dirty = false;
+    const onMove = (e: MouseEvent) => {
+      pendingX = e.clientX;
+      pendingY = e.clientY;
+      dirty = true;
+    };
+    const flush = () => {
+      if (dirty) {
+        setMousePos({ x: pendingX, y: pendingY });
+        dirty = false;
+      }
+      rafId = requestAnimationFrame(flush);
+    };
     document.addEventListener('mousemove', onMove);
-    return () => document.removeEventListener('mousemove', onMove);
+    rafId = requestAnimationFrame(flush);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      cancelAnimationFrame(rafId);
+    };
   }, []);
 
   // Click a slot: pick up or place
