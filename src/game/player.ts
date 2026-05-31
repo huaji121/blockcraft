@@ -403,14 +403,15 @@ export class Player extends Entity {
       // First person
       this.camera.position.copy(headPos);
     } else {
-      // Third person (back or front)
+      // Third person (back or front) — orbit around player using yaw + pitch
       const camDist = 4;
-      const camHeight = 2;
       const dir = this.perspective === 1 ? -1 : 1; // back = -1, front = 1
+      const cosP = Math.cos(this.pitch);
+      const sinP = Math.sin(this.pitch);
       this.camera.position.set(
-        headPos.x + Math.sin(this.yaw) * camDist * dir,
-        headPos.y + camHeight,
-        headPos.z + Math.cos(this.yaw) * camDist * dir,
+        headPos.x + Math.sin(this.yaw) * cosP * camDist * dir,
+        headPos.y + sinP * camDist + 1,
+        headPos.z + Math.cos(this.yaw) * cosP * camDist * dir,
       );
     }
 
