@@ -372,14 +372,28 @@ export class Player extends Entity {
     // ── Parent physics: grounded check, gravity, block collision ──
     // applyFriction=false because we set velocity directly from input
     // applyGravity=false when flying (flight handles vertical movement)
+    const prePos = this.position.clone();
     super.update(dt, (x, y, z) => this.world.getBlock(x, y, z), false, !this.isFlying);
 
     // ── Crouch edge protection (after block collision) ──
     if (this.isCrouching && this.isGrounded) {
       if (!this.hasGroundBelow(this.position)) {
-        // Undo the last frame's X/Z movement — we need to re-check
-        // Since parent already moved, we just prevent further movement
-        // by checking the current position and reverting if needed
+        const curX = this.position.x;
+        const curZ = this.position.z;
+        // Test X alone
+        this.position.x = prePos.x;
+        const xSafe = this.hasGroundBelow(this.position);
+        // Test Z alone
+        this.position.x = curX;
+        this.position.z = prePos.z;
+        const zSafe = this.hasGroundBelow(this.position);
+        // Restore current
+        this.position.x = curX;
+        this.position.z = curZ;
+        // Revert only the unsafe axes
+        if (xSafe) { this.position.x = prePos.x; this.velocity.x = 0; }
+        if (zSafe) { this.position.z = prePos.z; this.velocity.z = 0; }
+        if (!xSafe && !zSafe) { this.position.x = prePos.x; this.position.z = prePos.z; this.velocity.x = 0; this.velocity.z = 0; }
       }
     }
 
