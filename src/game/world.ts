@@ -69,7 +69,9 @@ export class World {
     const cy = Math.floor(wy / CHUNK_SIZE);
     const cz = Math.floor(wz / CHUNK_SIZE);
     const chunk = this.getChunk(cx, cy, cz);
-    if (!chunk) return BlockType.AIR;
+    // Unloaded chunks are treated as opaque solid — prevents boundary faces
+    // from being rendered into empty space, and stops BFS propagation
+    if (!chunk) return BlockType.BEDROCK;
     const lx = ((wx % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
