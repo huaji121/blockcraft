@@ -159,9 +159,8 @@ export function Chat({ messages, onSend, visible, onClose, initialValue = '' }: 
             textShadow: '1px 1px 0 #000',
             lineHeight: '18px',
             fontSize: 13,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
           }}>
             <span style={{
               color: msg.sender === 'System' ? '#ffff55' : '#ff5555',
