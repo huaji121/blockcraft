@@ -69,6 +69,7 @@ export class GameEngine {
     this.particles = new ParticleManager(this.scene);
     this.entityManager = new EntityManager(this.scene);
     this.entityManager.setParticleManager(this.particles);
+    this.entityManager.setGetBlock((x, y, z) => this.world.getBlock(x, y, z));
     this.player = new Player(this.scene, this.camera, this.world);
     this.entityManager.setPlayerRef(this.player);
     this.player.setEntityManager(this.entityManager);

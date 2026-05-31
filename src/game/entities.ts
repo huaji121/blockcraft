@@ -467,6 +467,10 @@ export class EntityManager {
     // Player is a separate Entity, add to collidables
     if (this.playerRef) collidables.push(this.playerRef);
 
+    // Save positions before resolution (for block collision rollback)
+    const savedPositions = new Map<Entity, THREE.Vector3>();
+    for (const e of collidables) savedPositions.set(e, e.position.clone());
+
     // Resolve all pairs
     for (let i = 0; i < collidables.length; i++) {
       const a = collidables[i];
@@ -487,8 +491,27 @@ export class EntityManager {
         aAABB.maxZ = a.position.z + a.width / 2;
       }
 
+      // Block collision check: if entity is now inside a block, revert X/Z
+      const saved = savedPositions.get(a)!;
+      if (a.collides(this.getBlockRef)) {
+        a.position.x = saved.x;
+        a.position.z = saved.z;
+        // Don't revert Y — stacking on entities is valid
+        if (a.collides(this.getBlockRef)) {
+          a.position.y = saved.y;
+        }
+      }
+
       a.syncMeshPosition();
     }
+  }
+
+  /** Cached getBlock reference for collision checks */
+  private getBlockRef: (x: number, y: number, z: number) => number = () => 0;
+
+  /** Set the getBlock callback for block collision checks during resolution */
+  setGetBlock(fn: (x: number, y: number, z: number) => number): void {
+    this.getBlockRef = fn;
   }
 
   /** Compute AABB overlap between two boxes. Returns null if no overlap. */
@@ -504,32 +527,37 @@ export class EntityManager {
 
   /** Resolve collision between two entities — both move equally. */
   private resolvePairSymmetric(a: Entity, b: Entity, overlap: { x: number; y: number; z: number }): void {
-    // Y-axis priority: stacking
-    if (a.velocity.y <= 0 && a.position.y >= b.position.y) {
-      // A falling onto B — snap A on top
-      a.position.y = b.position.y + b.height;
-      a.velocity.y = 0;
-      a.isGrounded = true;
-      return;
-    }
-    if (b.velocity.y <= 0 && b.position.y >= a.position.y) {
-      // B falling onto A — snap B on top
-      b.position.y = a.position.y + a.height;
-      b.velocity.y = 0;
-      b.isGrounded = true;
-      return;
-    }
-    if (a.velocity.y > 0 && a.position.y <= b.position.y) {
-      // A jumping into B from below
-      a.position.y -= overlap.y;
-      a.velocity.y = 0;
-      return;
-    }
-    if (b.velocity.y > 0 && b.position.y <= a.position.y) {
-      // B jumping into A from below
-      b.position.y -= overlap.y;
-      b.velocity.y = 0;
-      return;
+    // Lateral overlap is dominant when horizontal penetration is less than vertical
+    const minLateral = Math.min(overlap.x, overlap.z);
+    const isLateralDominant = minLateral < overlap.y;
+
+    if (!isLateralDominant) {
+      // Y-axis stacking: entity genuinely above the other (feet near or above the other's top)
+      const bTop = b.position.y + b.height;
+      if (a.velocity.y <= 0 && a.position.y >= bTop - 0.2) {
+        a.position.y = bTop;
+        a.velocity.y = 0;
+        a.isGrounded = true;
+        return;
+      }
+      const aTop = a.position.y + a.height;
+      if (b.velocity.y <= 0 && b.position.y >= aTop - 0.2) {
+        b.position.y = aTop;
+        b.velocity.y = 0;
+        b.isGrounded = true;
+        return;
+      }
+      // Jumping into from below
+      if (a.velocity.y > 0 && a.position.y + a.height <= b.position.y + 0.1) {
+        a.position.y -= overlap.y;
+        a.velocity.y = 0;
+        return;
+      }
+      if (b.velocity.y > 0 && b.position.y + b.height <= a.position.y + 0.1) {
+        b.position.y -= overlap.y;
+        b.velocity.y = 0;
+        return;
+      }
     }
 
     // Lateral push — both move half the overlap along minimum penetration axis
