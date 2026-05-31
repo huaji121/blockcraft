@@ -49,6 +49,11 @@ export class Player extends Entity {
   // Highlight
   private highlightMesh: THREE.LineSegments;
 
+  // Abilities
+  public flyEnabled: boolean = false;
+  public isFlying: boolean = false;
+  private lastSpacePressTime: number = 0;
+
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;
   private _uiOpen: boolean = false;
@@ -193,6 +198,16 @@ export class Player extends Entity {
         }
         this.lastWPressTime = now;
       }
+
+      // Double-tap Space to toggle flight (when fly ability is enabled)
+      if (e.code === 'Space' && !e.repeat && this.flyEnabled) {
+        const now = performance.now();
+        if (now - this.lastSpacePressTime < DOUBLE_TAP_WINDOW) {
+          this.isFlying = !this.isFlying;
+          this.isSprinting = false;
+        }
+        this.lastSpacePressTime = now;
+      }
     });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
 
@@ -286,15 +301,24 @@ export class Player extends Entity {
     this.velocity.x = moveDir.x;
     this.velocity.z = moveDir.z;
 
-    // ── Jump (before parent physics so isGrounded=false is seen) ──
-    if (this.keys.has(kb.jump) && this.isGrounded) {
-      this.velocity.y = JUMP_SPEED;
-      this.isGrounded = false;
+    // ── Flight mode ──
+    if (this.isFlying) {
+      this.velocity.y = 0;
+      const flySpeed = PLAYER_SPEED * (this.isSprinting ? SPRINT_SPEED_MULT : 1);
+      if (this.keys.has(kb.jump)) this.velocity.y = flySpeed;
+      if (this.isCrouching) this.velocity.y = -flySpeed;
+    } else {
+      // ── Jump (before parent physics so isGrounded=false is seen) ──
+      if (this.keys.has(kb.jump) && this.isGrounded) {
+        this.velocity.y = JUMP_SPEED;
+        this.isGrounded = false;
+      }
     }
 
     // ── Parent physics: grounded check, gravity, block collision ──
     // applyFriction=false because we set velocity directly from input
-    super.update(dt, (x, y, z) => this.world.getBlock(x, y, z), false);
+    // applyGravity=false when flying (flight handles vertical movement)
+    super.update(dt, (x, y, z) => this.world.getBlock(x, y, z), false, !this.isFlying);
 
     // ── Crouch edge protection (after block collision) ──
     if (this.isCrouching && this.isGrounded) {

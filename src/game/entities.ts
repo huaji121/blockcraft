@@ -67,6 +67,7 @@ export class Entity {
     dt: number,
     getBlock: (x: number, y: number, z: number) => number,
     applyFriction: boolean = true,
+    applyGravity: boolean = true,
   ): boolean {
     if (performance.now() > this.flashUntil) {
       this.material.color.copy(this.originalColor);
@@ -89,7 +90,7 @@ export class Entity {
     this.isGrounded = this.checkGrounded(getBlock);
 
     // Gravity (after grounded check)
-    if (!this.isGrounded) {
+    if (!this.isGrounded && applyGravity) {
       this.velocity.y -= ENTITY_GRAVITY * dt;
     }
 

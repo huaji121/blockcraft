@@ -619,6 +619,12 @@ export function Game() {
         setWireframe: (enabled: boolean) => {
           engine.setWireframe(enabled);
         },
+        setAbility: (name: string, enabled: boolean) => {
+          if (name === 'fly') {
+            player.flyEnabled = enabled;
+            if (!enabled) player.isFlying = false;
+          }
+        },
       });
     } else {
       addChatMessage('Player', text);

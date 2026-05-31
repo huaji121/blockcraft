@@ -8,6 +8,7 @@ export interface CommandContext {
   killEntities: () => void;
   getPlayerPos: () => { x: number; y: number; z: number };
   setWireframe: (enabled: boolean) => void;
+  setAbility: (name: string, enabled: boolean) => void;
 }
 
 interface Command {
@@ -128,6 +129,29 @@ const commands: Command[] = [
       } else {
         ctx.addMessage('System', 'Value must be 0 (filled) or 1 (wireframe)');
       }
+    },
+  },
+  {
+    name: 'ability',
+    description: 'Toggle a player ability',
+    usage: '/ability <fly> <0|1>',
+    execute: (args, ctx) => {
+      if (args.length < 2) {
+        ctx.addMessage('System', 'Usage: /ability <fly> <0|1>');
+        return;
+      }
+      const abilityName = args[0].toLowerCase();
+      const value = parseInt(args[1]);
+      if (value !== 0 && value !== 1) {
+        ctx.addMessage('System', 'Value must be 0 (off) or 1 (on)');
+        return;
+      }
+      if (abilityName !== 'fly') {
+        ctx.addMessage('System', `Unknown ability: ${args[0]}`);
+        return;
+      }
+      ctx.setAbility(abilityName, value === 1);
+      ctx.addMessage('System', `Fly ${value === 1 ? 'enabled' : 'disabled'}. Double-tap Space to toggle flight.`);
     },
   },
 ];
