@@ -3,7 +3,7 @@ import { Entity } from './entities';
 import { World } from './world';
 import { BlockType, BLOCK_DATA } from './blocks';
 import { EntityManager } from './entities';
-import { ITEM_REGISTRY, EMPTY_ITEM_ID } from './items';
+import { ITEM_REGISTRY, EMPTY_ITEM_ID, type InteractContext } from './items';
 import { DEFAULT_KEYBINDS } from './keybinds';
 import {
   JUMP_SPEED, PLAYER_SPEED,
@@ -581,45 +581,30 @@ export class Player extends Entity {
       this.destroyOverlay.visible = false;
     }
 
-    // Right click: spawn entity or place block
+    // Right click: polymorphic item interaction
     if (this.rightMouseDown && now - this.lastPlaceTime > this.placeCooldown) {
       const selectedItemId = this.getSelectedItemId();
       if (selectedItemId === EMPTY_ITEM_ID) return;
 
-      const selectedItem = ITEM_REGISTRY.getById(selectedItemId);
-      if (selectedItem?.isSpawnEgg() && this.entityManager) {
-        const hit = this.world.raycast(this.camera.position, dir, 7);
-        if (hit) {
-          const spawnPos = new THREE.Vector3(
-            hit.blockPos.x + 0.5,
-            hit.blockPos.y + 1.01,
-            hit.blockPos.z + 0.5,
-          );
-          this.entityManager.spawn(spawnPos);
-          this.onBlockPlace?.(selectedItemId);
-          this.lastPlaceTime = now;
-        }
-        return;
-      }
-
       const item = ITEM_REGISTRY.getById(selectedItemId);
-      const blockType = item?.getBlockType();
-      if (blockType == null) return;
+      if (!item) return;
 
       const hit = this.world.raycast(this.camera.position, dir, 7);
-      if (hit) {
-        const placePos = hit.blockPos.clone().add(hit.normal);
-        const halfW = this.width / 2;
-        const overlaps =
-          this.position.x + halfW > placePos.x && this.position.x - halfW < placePos.x + 1 &&
-          this.position.y + this.currentHeight > placePos.y && this.position.y < placePos.y + 1 &&
-          this.position.z + halfW > placePos.z && this.position.z - halfW < placePos.z + 1;
+      if (!hit) return;
 
-        if (!overlaps) {
-          this.world.setBlock(placePos.x, placePos.y, placePos.z, blockType);
-          this.onBlockPlace?.(selectedItemId);
-          this.lastPlaceTime = now;
-        }
+      const ctx: InteractContext = {
+        world: this.world,
+        entityManager: this.entityManager,
+        hitBlockPos: hit.blockPos,
+        hitNormal: hit.normal,
+        playerPos: this.position,
+        playerHeight: this.currentHeight,
+        playerWidth: this.width,
+      };
+
+      if (item.interactWithBlock(ctx)) {
+        this.onBlockPlace?.(selectedItemId);
+        this.lastPlaceTime = now;
       }
     }
   }

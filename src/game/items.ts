@@ -1,4 +1,16 @@
+import * as THREE from 'three';
 import { BlockType, BLOCK_DATA, getBlockFaceTexture } from './blocks';
+
+/** Context passed to Item.interactWithBlock() for polymorphic right-click behavior */
+export interface InteractContext {
+  world: { setBlock(x: number, y: number, z: number, type: BlockType): void };
+  entityManager: { spawn(pos: THREE.Vector3): unknown } | null;
+  hitBlockPos: THREE.Vector3;   // the block that was clicked
+  hitNormal: THREE.Vector3;     // face normal of the hit
+  playerPos: THREE.Vector3;
+  playerHeight: number;
+  playerWidth: number;
+}
 
 // ── Item base class ──
 
@@ -14,7 +26,10 @@ export abstract class Item {
   abstract getTexture(): string;
   abstract getFaceTexture(face: 'top' | 'bottom' | 'side'): string;
 
-  isSpawnEgg(): boolean { return false; }
+  /** Called when the player right-clicks a block. Returns true if the item should be consumed. */
+  interactWithBlock(_ctx: InteractContext): boolean {
+    return false;
+  }
 }
 
 // ── BlockItem ──
@@ -30,6 +45,18 @@ export class BlockItem extends Item {
   getTexture(): string { return BLOCK_DATA[this.blockType].texture; }
   getFaceTexture(face: 'top' | 'bottom' | 'side'): string {
     return getBlockFaceTexture(this.blockType, face);
+  }
+
+  override interactWithBlock(ctx: InteractContext): boolean {
+    const placePos = ctx.hitBlockPos.clone().add(ctx.hitNormal);
+    const halfW = ctx.playerWidth / 2;
+    const overlaps =
+      ctx.playerPos.x + halfW > placePos.x && ctx.playerPos.x - halfW < placePos.x + 1 &&
+      ctx.playerPos.y + ctx.playerHeight > placePos.y && ctx.playerPos.y < placePos.y + 1 &&
+      ctx.playerPos.z + halfW > placePos.z && ctx.playerPos.z - halfW < placePos.z + 1;
+    if (overlaps) return false;
+    ctx.world.setBlock(placePos.x, placePos.y, placePos.z, this.blockType);
+    return true;
   }
 }
 
@@ -58,7 +85,16 @@ export class SpawnEggItem extends SimpleItem {
     super(id, name, texturePath, 64);
   }
 
-  override isSpawnEgg(): boolean { return true; }
+  override interactWithBlock(ctx: InteractContext): boolean {
+    if (!ctx.entityManager) return false;
+    const spawnPos = new THREE.Vector3(
+      ctx.hitBlockPos.x + 0.5,
+      ctx.hitBlockPos.y + 1.01,
+      ctx.hitBlockPos.z + 0.5,
+    );
+    ctx.entityManager.spawn(spawnPos);
+    return true;
+  }
 }
 
 // ── Item IDs ──
