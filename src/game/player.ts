@@ -258,9 +258,9 @@ export class Player extends Entity {
         this.lastSpacePressTime = now;
       }
 
-      // F4: toggle perspective (first → third back → third front)
+      // F4: toggle perspective (first → third front → third back)
       if (e.code === 'F4' && !e.repeat) {
-        this.perspective = (this.perspective + 1) % 3;
+        this.perspective = this.perspective === 0 ? 2 : this.perspective === 2 ? 1 : 0;
       }
     });
     document.addEventListener('keyup', (e) => this.keys.delete(e.code));
