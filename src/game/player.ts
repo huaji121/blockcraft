@@ -53,6 +53,7 @@ export class Player extends Entity {
   public flyEnabled: boolean = false;
   public isFlying: boolean = false;
   private lastSpacePressTime: number = 0;
+  public infItemEnabled: boolean = false;
 
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;
@@ -67,6 +68,7 @@ export class Player extends Entity {
     }
   }
   private onBlockBreak: ((wx: number, wy: number, wz: number, blockType: BlockType) => void) | null = null;
+  private onBlockPlace: ((itemId: number) => void) | null = null;
 
   // Entity interaction
   private entityManager: EntityManager | null = null;
@@ -101,6 +103,10 @@ export class Player extends Entity {
 
   setOnBlockBreak(fn: (wx: number, wy: number, wz: number, blockType: BlockType) => void): void {
     this.onBlockBreak = fn;
+  }
+
+  setOnBlockPlace(fn: (itemId: number) => void): void {
+    this.onBlockPlace = fn;
   }
 
   setEntityManager(em: EntityManager): void {
@@ -449,6 +455,7 @@ export class Player extends Entity {
 
         if (!overlaps) {
           this.world.setBlock(placePos.x, placePos.y, placePos.z, blockType);
+          this.onBlockPlace?.(selectedItemId);
           this.lastPlaceTime = now;
         }
       }

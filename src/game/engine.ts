@@ -88,6 +88,7 @@ export class GameEngine {
       this.entityManager.spawnDroppedItem(dropPos, blockType, 1);
     });
 
+
     window.addEventListener('resize', this.onResize.bind(this));
 
     this.renderer.domElement.addEventListener('click', () => {
@@ -137,6 +138,10 @@ export class GameEngine {
 
   setOnItemPickup(fn: ItemPickupCallback): void {
     this.entityManager.setOnItemPickup(fn);
+  }
+
+  setOnBlockPlace(fn: (itemId: number) => void): void {
+    this.player.setOnBlockPlace(fn);
   }
 
   getEntities() {

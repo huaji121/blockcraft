@@ -146,12 +146,12 @@ const commands: Command[] = [
         ctx.addMessage('System', 'Value must be 0 (off) or 1 (on)');
         return;
       }
-      if (abilityName !== 'fly') {
+      if (abilityName !== 'fly' && abilityName !== 'infitem') {
         ctx.addMessage('System', `Unknown ability: ${args[0]}`);
         return;
       }
       ctx.setAbility(abilityName, value === 1);
-      ctx.addMessage('System', `Fly ${value === 1 ? 'enabled' : 'disabled'}. Double-tap Space to toggle flight.`);
+      ctx.addMessage('System', `${abilityName} ${value === 1 ? 'enabled' : 'disabled'}.`);
     },
   },
 ];

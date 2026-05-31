@@ -281,6 +281,7 @@ export function Game() {
   heldItemRef.current = heldItem;
   const isBackpackOpenRef = useRef(isBackpackOpen);
   isBackpackOpenRef.current = isBackpackOpen;
+  const infItemRef = useRef(false);
   const hoveredSlotRef = useRef(hoveredSlot);
   hoveredSlotRef.current = hoveredSlot;
   const isChatOpenRef = useRef(isChatOpen);
@@ -439,6 +440,12 @@ export function Game() {
       return false;
     });
 
+    // Wire block placement: consume item from hotbar
+    engine.setOnBlockPlace((_itemId) => {
+      if (infItemRef.current) return;
+      dispatch({ type: 'REMOVE_FROM_SLOT', source: 'hotbar', index: selectedSlotRef.current, count: 1 });
+    });
+
     engine.start();
     return () => { engine.dispose(); engineRef.current = null; };
   }, []);
@@ -534,13 +541,16 @@ export function Game() {
         e.preventDefault();
         const throwCount = e.ctrlKey ? 64 : 1;
         const held = heldItemRef.current;
+        const inf = infItemRef.current;
 
         if (held && !isSlotEmpty(held)) {
           // Throw from cursor
           const count = Math.min(throwCount, held.count);
           engineRef.current?.throwItem(held.itemId, count);
-          const remaining = held.count - count;
-          setHeldItem(remaining > 0 ? { ...held, count: remaining } : null);
+          if (!inf) {
+            const remaining = held.count - count;
+            setHeldItem(remaining > 0 ? { ...held, count: remaining } : null);
+          }
         } else if (hoveredSlotRef.current) {
           // Throw from hovered slot (when backpack is open)
           const { source, index } = hoveredSlotRef.current;
@@ -549,7 +559,7 @@ export function Game() {
           if (slot && !isSlotEmpty(slot)) {
             const count = Math.min(throwCount, slot.count);
             engineRef.current?.throwItem(slot.itemId, count);
-            dispatch({ type: 'REMOVE_FROM_SLOT', source, index, count });
+            if (!inf) dispatch({ type: 'REMOVE_FROM_SLOT', source, index, count });
           }
         } else if (!isBackpackOpenRef.current) {
           // Throw from selected hotbar slot (when backpack is closed)
@@ -557,7 +567,7 @@ export function Game() {
           if (slot && !isSlotEmpty(slot)) {
             const count = Math.min(throwCount, slot.count);
             engineRef.current?.throwItem(slot.itemId, count);
-            dispatch({ type: 'REMOVE_FROM_SLOT', source: 'hotbar', index: selectedSlotRef.current, count });
+            if (!inf) dispatch({ type: 'REMOVE_FROM_SLOT', source: 'hotbar', index: selectedSlotRef.current, count });
           }
         }
         return;
@@ -623,6 +633,9 @@ export function Game() {
           if (name === 'fly') {
             player.flyEnabled = enabled;
             if (!enabled) player.isFlying = false;
+          } else if (name === 'infitem') {
+            player.infItemEnabled = enabled;
+            infItemRef.current = enabled;
           }
         },
       });
