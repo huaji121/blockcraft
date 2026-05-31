@@ -636,6 +636,8 @@ export function Game() {
           } else if (name === 'infitem') {
             player.infItemEnabled = enabled;
             infItemRef.current = enabled;
+          } else if (name === 'instbreak') {
+            player.instBreakEnabled = enabled;
           }
         },
       });

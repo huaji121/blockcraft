@@ -62,6 +62,7 @@ export class Player extends Entity {
   public isFlying: boolean = false;
   private lastSpacePressTime: number = 0;
   public infItemEnabled: boolean = false;
+  public instBreakEnabled: boolean = false;
 
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;
@@ -455,7 +456,18 @@ export class Player extends Entity {
         const bz = blockHit.blockPos.z;
         const hardness = BLOCK_DATA[blockHit.blockType].hardness;
 
-        // Unbreakable
+        // Instant break ability (breaks anything including bedrock)
+        if (this.instBreakEnabled && now - this.lastBreakTime > this.breakCooldown) {
+          this.world.setBlock(bx, by, bz, BlockType.AIR);
+          this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
+          this.lastBreakTime = now;
+          this.miningPos = null;
+          this.miningProgress = 0;
+          this.destroyOverlay.visible = false;
+          return;
+        }
+
+        // Unbreakable (only checked when instbreak is off)
         if (hardness < 0) {
           this.miningPos = null;
           this.miningProgress = 0;
