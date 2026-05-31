@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Entity } from './entities';
 import { World } from './world';
-import { BlockType } from './blocks';
+import { BlockType, BLOCK_DATA } from './blocks';
 import { EntityManager } from './entities';
 import { ITEM_REGISTRY, EMPTY_ITEM_ID } from './items';
 import { DEFAULT_KEYBINDS } from './keybinds';
@@ -46,8 +46,16 @@ export class Player extends Entity {
   private breakCooldown: number = 200;
   private placeCooldown: number = 200;
 
+  // Block mining progress
+  private miningPos: { x: number; y: number; z: number } | null = null;
+  private miningProgress: number = 0;
+
   // Highlight
   private highlightMesh: THREE.LineSegments;
+
+  // Destroy stage overlay
+  private destroyOverlay: THREE.Mesh;
+  private destroyMaterials: THREE.MeshBasicMaterial[] = [];
 
   // Abilities
   public flyEnabled: boolean = false;
@@ -93,6 +101,30 @@ export class Player extends Entity {
       new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
     );
     this.highlightMesh.visible = false;
+
+    // Destroy stage overlay (slightly larger than a block, renders on top)
+    const loader = new THREE.TextureLoader();
+    for (let i = 0; i <= 9; i++) {
+      const tex = loader.load(`/assets/textures/block/destroy_stage_${i}.png`);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.destroyMaterials.push(new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }));
+    }
+    const overlayGeo = new THREE.BoxGeometry(1.008, 1.008, 1.008);
+    this.destroyOverlay = new THREE.Mesh(overlayGeo, this.destroyMaterials[0]);
+    this.destroyOverlay.visible = false;
+    this.destroyOverlay.renderOrder = 2;
+    scene.add(this.destroyOverlay);
 
     this.setupControls();
   }
@@ -360,7 +392,7 @@ export class Player extends Entity {
 
     if (!this.uiOpen) {
       this.updateHighlight();
-      this.handleBlockInteraction();
+      this.handleBlockInteraction(dt);
     } else {
       this.highlightMesh.visible = false;
       this.leftMouseDown = false;
@@ -387,19 +419,20 @@ export class Player extends Entity {
     }
   }
 
-  private handleBlockInteraction(): void {
+  private handleBlockInteraction(dt: number): void {
     const now = performance.now();
     const dir = new THREE.Vector3(0, 0, -1);
     dir.applyQuaternion(this.camera.quaternion);
 
-    // Left click: damage entity or break block
-    if (this.leftMouseDown && now - this.lastBreakTime > this.breakCooldown) {
-      const blockHit = this.world.raycast(this.camera.position, dir, 7);
-      const blockDist = blockHit ? this.camera.position.distanceTo(
-        new THREE.Vector3(blockHit.blockPos.x + 0.5, blockHit.blockPos.y + 0.5, blockHit.blockPos.z + 0.5)
-      ) : Infinity;
+    // Left click: damage entity or mine block
+    const blockHit = this.world.raycast(this.camera.position, dir, 7);
+    const blockDist = blockHit ? this.camera.position.distanceTo(
+      new THREE.Vector3(blockHit.blockPos.x + 0.5, blockHit.blockPos.y + 0.5, blockHit.blockPos.z + 0.5)
+    ) : Infinity;
 
-      if (this.entityManager) {
+    if (this.leftMouseDown) {
+      // Entity hit (always instant)
+      if (this.entityManager && now - this.lastBreakTime > this.breakCooldown) {
         const entityHit = this.entityManager.raycastEntities(this.camera.position, dir, 7);
         if (entityHit && entityHit.distance < blockDist) {
           const knockbackDir = new THREE.Vector3(
@@ -409,15 +442,57 @@ export class Player extends Entity {
           ).normalize();
           entityHit.entity.takeDamage(5, knockbackDir);
           this.lastBreakTime = now;
+          this.miningPos = null;
+          this.miningProgress = 0;
           return;
         }
       }
 
+      // Block mining
       if (blockHit && blockHit.blockType !== BlockType.AIR) {
-        this.world.setBlock(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, BlockType.AIR);
-        this.onBlockBreak?.(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, blockHit.blockType);
-        this.lastBreakTime = now;
+        const bx = blockHit.blockPos.x;
+        const by = blockHit.blockPos.y;
+        const bz = blockHit.blockPos.z;
+        const hardness = BLOCK_DATA[blockHit.blockType].hardness;
+
+        // Unbreakable
+        if (hardness < 0) {
+          this.miningPos = null;
+          this.miningProgress = 0;
+          this.destroyOverlay.visible = false;
+          return;
+        }
+
+        // Same block as before — continue mining
+        if (this.miningPos && this.miningPos.x === bx && this.miningPos.y === by && this.miningPos.z === bz) {
+          this.miningProgress += dt;
+          if (this.miningProgress >= hardness) {
+            // Break!
+            this.world.setBlock(bx, by, bz, BlockType.AIR);
+            this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
+            this.miningPos = null;
+            this.miningProgress = 0;
+            this.destroyOverlay.visible = false;
+          }
+        } else {
+          // New block — start mining
+          this.miningPos = { x: bx, y: by, z: bz };
+          this.miningProgress = 0;
+        }
+
+        // Update destroy overlay
+        if (this.miningPos) {
+          const stage = Math.min(9, Math.floor(this.miningProgress / hardness * 10));
+          this.destroyOverlay.position.set(bx + 0.5, by + 0.5, bz + 0.5);
+          this.destroyOverlay.material = this.destroyMaterials[stage];
+          this.destroyOverlay.visible = true;
+        }
       }
+    } else {
+      // Not holding left click — reset mining
+      this.miningPos = null;
+      this.miningProgress = 0;
+      this.destroyOverlay.visible = false;
     }
 
     // Right click: spawn entity or place block

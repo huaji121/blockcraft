@@ -50,6 +50,17 @@ export class World {
       tex.colorSpace = THREE.SRGBColorSpace;
       this.individualTextures.set(path, tex);
     }
+
+    // Load destroy stage overlays (destroy_stage_0..9)
+    for (let i = 0; i <= 9; i++) {
+      const path = `/assets/textures/block/destroy_stage_${i}.png`;
+      const tex = this.loader.load(path);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.individualTextures.set(path, tex);
+    }
   }
 
   setRenderDistance(distance: number): void { this.renderDistance = distance; }

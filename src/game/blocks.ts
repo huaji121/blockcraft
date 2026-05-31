@@ -28,28 +28,29 @@ export interface BlockData {
   name: string;
   solid: boolean;
   transparent: boolean;
+  hardness: number;           // hits to break (1 = instant, -1 = unbreakable)
   texture: string;            // single texture for simple blocks
   faceTextures?: BlockFaceTextures; // per-face textures override
 }
 
 export const BLOCK_DATA: Record<number, BlockData> = {
-  [BlockType.AIR]:         { name: 'Air',          solid: false, transparent: true,  texture: '' },
-  [BlockType.DIRT]:        { name: 'Dirt',         solid: true,  transparent: false, texture: '/assets/textures/block/dirt.png' },
-  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: '/assets/textures/block/grass_block_side.png' } },
-  [BlockType.STONE]:       { name: 'Stone',        solid: true,  transparent: false, texture: '/assets/textures/block/stone.png' },
-  [BlockType.COBBLESTONE]: { name: 'Cobblestone',  solid: true,  transparent: false, texture: '/assets/textures/block/cobblestone.png' },
-  [BlockType.OAK_PLANKS]:  { name: 'Oak Planks',   solid: true,  transparent: false, texture: '/assets/textures/block/oak_planks.png' },
-  [BlockType.OAK_LOG]:     { name: 'Oak Log',      solid: true,  transparent: false, texture: '/assets/textures/block/oak_log.png', faceTextures: { top: '/assets/textures/block/oak_log_top.png', bottom: '/assets/textures/block/oak_log_top.png', side: '/assets/textures/block/oak_log.png' } },
-  [BlockType.SAND]:        { name: 'Sand',         solid: true,  transparent: false, texture: '/assets/textures/block/sand.png' },
-  [BlockType.GRAVEL]:      { name: 'Gravel',       solid: true,  transparent: false, texture: '/assets/textures/block/gravel.png' },
-  [BlockType.GLASS]:       { name: 'Glass',        solid: true,  transparent: true,  texture: '/assets/textures/block/glass.png' },
-  [BlockType.BRICKS]:      { name: 'Bricks',       solid: true,  transparent: false, texture: '/assets/textures/block/bricks.png' },
-  [BlockType.SNOW]:        { name: 'Snow',         solid: true,  transparent: false, texture: '/assets/textures/block/snow.png' },
-  [BlockType.BEDROCK]:     { name: 'Bedrock',      solid: true,  transparent: false, texture: '/assets/textures/block/bedrock.png' },
-  [BlockType.COAL_ORE]:    { name: 'Coal Ore',     solid: true,  transparent: false, texture: '/assets/textures/block/coal_ore.png' },
-  [BlockType.IRON_ORE]:    { name: 'Iron Ore',     solid: true,  transparent: false, texture: '/assets/textures/block/iron_ore.png' },
-  [BlockType.GOLD_ORE]:    { name: 'Gold Ore',     solid: true,  transparent: false, texture: '/assets/textures/block/gold_ore.png' },
-  [BlockType.DIAMOND_ORE]: { name: 'Diamond Ore',  solid: true,  transparent: false, texture: '/assets/textures/block/diamond_ore.png' },
+  [BlockType.AIR]:         { name: 'Air',          solid: false, transparent: true,  hardness: 0,  texture: '' },
+  [BlockType.DIRT]:        { name: 'Dirt',         solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/dirt.png' },
+  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: '/assets/textures/block/grass_block_side.png' } },
+  [BlockType.STONE]:       { name: 'Stone',        solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/stone.png' },
+  [BlockType.COBBLESTONE]: { name: 'Cobblestone',  solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/cobblestone.png' },
+  [BlockType.OAK_PLANKS]:  { name: 'Oak Planks',   solid: true,  transparent: false, hardness: 3,  texture: '/assets/textures/block/oak_planks.png' },
+  [BlockType.OAK_LOG]:     { name: 'Oak Log',      solid: true,  transparent: false, hardness: 3,  texture: '/assets/textures/block/oak_log.png', faceTextures: { top: '/assets/textures/block/oak_log_top.png', bottom: '/assets/textures/block/oak_log_top.png', side: '/assets/textures/block/oak_log.png' } },
+  [BlockType.SAND]:        { name: 'Sand',         solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/sand.png' },
+  [BlockType.GRAVEL]:      { name: 'Gravel',       solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/gravel.png' },
+  [BlockType.GLASS]:       { name: 'Glass',        solid: true,  transparent: true,  hardness: 1,  texture: '/assets/textures/block/glass.png' },
+  [BlockType.BRICKS]:      { name: 'Bricks',       solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/bricks.png' },
+  [BlockType.SNOW]:        { name: 'Snow',         solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/snow.png' },
+  [BlockType.BEDROCK]:     { name: 'Bedrock',      solid: true,  transparent: false, hardness: -1, texture: '/assets/textures/block/bedrock.png' },
+  [BlockType.COAL_ORE]:    { name: 'Coal Ore',     solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/coal_ore.png' },
+  [BlockType.IRON_ORE]:    { name: 'Iron Ore',     solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/iron_ore.png' },
+  [BlockType.GOLD_ORE]:    { name: 'Gold Ore',     solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/gold_ore.png' },
+  [BlockType.DIAMOND_ORE]: { name: 'Diamond Ore',  solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/diamond_ore.png' },
 };
 
 /** Get the texture path for a specific face of a block */
