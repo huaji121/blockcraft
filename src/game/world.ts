@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Chunk } from './chunk';
 import { TerrainNoise } from './noise';
 import { BlockType, BLOCK_DATA, ALL_BLOCKS } from './blocks';
-import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME, MESH_UPLOADS_PER_FRAME } from './constants';
+import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME } from './constants';
 import { TextureAtlas } from './atlas';
 
 export class World {
@@ -14,11 +14,10 @@ export class World {
   private loader: THREE.TextureLoader;
   private renderDistance: number = RENDER_DISTANCE;
   private chunksPerFrame: number = CHUNKS_PER_FRAME;
-  private meshUploadsPerFrame: number = MESH_UPLOADS_PER_FRAME;
   private ready: boolean = false;
 
-  // Mesh upload queue: chunks waiting to have their meshes added to scene
-  private meshQueue: Chunk[] = [];
+  // Dirty chunk tracking: only rebuild chunks that need it
+  private dirtyChunks: Set<Chunk> = new Set();
 
   constructor(scene: THREE.Scene, seed: number = 42) {
     this.scene = scene;
@@ -87,18 +86,23 @@ export class World {
     const ly = ((wy % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     const lz = ((wz % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
     chunk.setBlock(lx, ly, lz, type);
-    this.rebuildChunk(chunk);
-    if (lx === 0) this.rebuildNeighborChunk(cx - 1, cy, cz);
-    if (lx === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx + 1, cy, cz);
-    if (ly === 0) this.rebuildNeighborChunk(cx, cy - 1, cz);
-    if (ly === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx, cy + 1, cz);
-    if (lz === 0) this.rebuildNeighborChunk(cx, cy, cz - 1);
-    if (lz === CHUNK_SIZE - 1) this.rebuildNeighborChunk(cx, cy, cz + 1);
+    this.markDirty(chunk);
+    if (lx === 0) this.markNeighborDirty(cx - 1, cy, cz);
+    if (lx === CHUNK_SIZE - 1) this.markNeighborDirty(cx + 1, cy, cz);
+    if (ly === 0) this.markNeighborDirty(cx, cy - 1, cz);
+    if (ly === CHUNK_SIZE - 1) this.markNeighborDirty(cx, cy + 1, cz);
+    if (lz === 0) this.markNeighborDirty(cx, cy, cz - 1);
+    if (lz === CHUNK_SIZE - 1) this.markNeighborDirty(cx, cy, cz + 1);
   }
 
-  private rebuildNeighborChunk(cx: number, cy: number, cz: number): void {
+  private markDirty(chunk: Chunk): void {
+    chunk.dirty = true;
+    this.dirtyChunks.add(chunk);
+  }
+
+  private markNeighborDirty(cx: number, cy: number, cz: number): void {
     const chunk = this.getChunk(cx, cy, cz);
-    if (chunk) this.rebuildChunk(chunk);
+    if (chunk) this.markDirty(chunk);
   }
 
   private generateChunk(cx: number, cy: number, cz: number): Chunk {
@@ -107,6 +111,7 @@ export class World {
     const worldY0 = cy * CHUNK_SIZE;
     const worldZ0 = cz * CHUNK_SIZE;
 
+    // Merged terrain + ore generation: cache surfaceHeight per column
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX0 + x;
@@ -116,7 +121,14 @@ export class World {
         for (let y = 0; y < CHUNK_SIZE; y++) {
           const wy = worldY0 + y;
           if (wy < surfaceHeight - 3) {
-            chunk.setBlock(x, y, z, BlockType.STONE);
+            // Stone layer — check for ore placement inline
+            const h = this.oreHash(wx, wy, wz);
+            let blockType = BlockType.STONE;
+            if (wy < 16 && h < 8) blockType = BlockType.DIAMOND_ORE;
+            else if (wy < 32 && h < 16) blockType = BlockType.GOLD_ORE;
+            else if (wy < 48 && h < 24) blockType = BlockType.IRON_ORE;
+            else if (h < 32) blockType = BlockType.COAL_ORE;
+            chunk.setBlock(x, y, z, blockType);
           } else if (wy < surfaceHeight) {
             chunk.setBlock(x, y, z, BlockType.DIRT);
           } else if (wy === surfaceHeight) {
@@ -126,29 +138,8 @@ export class World {
       }
     }
 
-    // Ore generation: simple hash-based placement in stone layers
-    for (let x = 0; x < CHUNK_SIZE; x++) {
-      for (let z = 0; z < CHUNK_SIZE; z++) {
-        const wx = worldX0 + x;
-        const wz = worldZ0 + z;
-        const surfaceHeight = this.noise.getHeight(wx, wz);
-        for (let y = 0; y < CHUNK_SIZE; y++) {
-          const wy = worldY0 + y;
-          if (wy >= surfaceHeight - 3) continue; // only in stone layer
-          const h = this.oreHash(wx, wy, wz);
-          if (wy < 16 && h < 8) {
-            chunk.setBlock(x, y, z, BlockType.DIAMOND_ORE);
-          } else if (wy < 32 && h < 16) {
-            chunk.setBlock(x, y, z, BlockType.GOLD_ORE);
-          } else if (wy < 48 && h < 24) {
-            chunk.setBlock(x, y, z, BlockType.IRON_ORE);
-          } else if (h < 32) {
-            chunk.setBlock(x, y, z, BlockType.COAL_ORE);
-          }
-        }
-      }
-    }
     chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
+    chunk.dirty = false;
     return chunk;
   }
 
@@ -166,22 +157,6 @@ export class World {
     for (const mesh of chunk.meshes) this.scene.add(mesh);
   }
 
-  /** Spiral chunk order: yields (dx, dz) from center outward */
-  private *spiralOrder(radius: number): Generator<[number, number]> {
-    yield [0, 0];
-    for (let r = 1; r <= radius; r++) {
-      for (let x = -r; x <= r; x++) yield [x, -r];
-      for (let z = -r + 1; z <= r; z++) yield [r, z];
-      for (let x = r - 1; x >= -r; x--) yield [x, r];
-      for (let z = r - 1; z >= -r + 1; z--) yield [-r, z];
-    }
-  }
-
-  /** Chebyshev distance (max of axis distances) */
-  private chebyshev(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-    return Math.max(Math.abs(ax - bx), Math.abs(ay - by), Math.abs(az - bz));
-  }
-
   update(playerX: number, playerY: number, playerZ: number): void {
     if (!this.ready) return;
 
@@ -189,51 +164,57 @@ export class World {
     const pcy = Math.floor(playerY / CHUNK_SIZE);
     const pcz = Math.floor(playerZ / CHUNK_SIZE);
 
-    const neededChunks = new Set<string>();
-    const toGenerate: { cx: number; cy: number; cz: number; dist: number }[] = [];
+    const unloadDist = this.renderDistance + UNLOAD_HYSTERESIS;
 
-    // Spiral loading: collect missing chunks in spiral order
-    for (const [dx, dz] of this.spiralOrder(this.renderDistance)) {
-      for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
-        const cx = pcx + dx;
-        const cy = pcy + dy;
-        const cz = pcz + dz;
-        const key = this.chunkKey(cx, cy, cz);
-        neededChunks.add(key);
+    // Phase 1: Generate new chunks (spiral order, limited per frame)
+    let generated = 0;
+    genLoop:
+    for (let r = 0; r <= this.renderDistance; r++) {
+      // Spiral perimeter at radius r
+      const positions: [number, number][] = [[0, 0]];
+      if (r > 0) {
+        for (let x = -r; x <= r; x++) positions.push([x, -r]);
+        for (let z = -r + 1; z <= r; z++) positions.push([r, z]);
+        for (let x = r - 1; x >= -r; x--) positions.push([x, r]);
+        for (let z = r - 1; z >= -r + 1; z--) positions.push([-r, z]);
+      }
 
-        if (!this.chunks.has(key)) {
-          const dist = Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz));
-          toGenerate.push({ cx, cy, cz, dist });
+      for (const [dx, dz] of positions) {
+        for (let dy = -RENDER_DISTANCE_Y; dy <= RENDER_DISTANCE_Y; dy++) {
+          if (generated >= this.chunksPerFrame) break genLoop;
+
+          const cx = pcx + dx;
+          const cy = pcy + dy;
+          const cz = pcz + dz;
+          const key = this.chunkKey(cx, cy, cz);
+
+          if (this.chunks.has(key)) continue;
+
+          const chunk = this.generateChunk(cx, cy, cz);
+          this.chunks.set(key, chunk);
+          // generateChunk already built meshes and computed faceSolidity
+          for (const mesh of chunk.meshes) this.scene.add(mesh);
+
+          // Mark neighboring chunks as dirty so their boundary faces update
+          this.markNeighborDirty(cx - 1, cy, cz);
+          this.markNeighborDirty(cx + 1, cy, cz);
+          this.markNeighborDirty(cx, cy - 1, cz);
+          this.markNeighborDirty(cx, cy + 1, cz);
+          this.markNeighborDirty(cx, cy, cz - 1);
+          this.markNeighborDirty(cx, cy, cz + 1);
+
+          generated++;
         }
       }
     }
 
-    // Generate at most chunksPerFrame new chunks (already sorted by spiral = distance)
-    const genBatch = toGenerate.slice(0, this.chunksPerFrame);
-    for (const { cx, cy, cz } of genBatch) {
-      const chunk = this.generateChunk(cx, cy, cz);
-      const key = this.chunkKey(cx, cy, cz);
-      this.chunks.set(key, chunk);
+    // Phase 2: Rebuild only dirty chunks (O(dirty), not O(all chunks))
+    for (const chunk of this.dirtyChunks) {
       this.rebuildChunk(chunk);
-
-      // Mark neighboring chunks as dirty so their boundary faces update
-      const neighbors: [number, number, number][] = [
-        [cx - 1, cy, cz], [cx + 1, cy, cz],
-        [cx, cy - 1, cz], [cx, cy + 1, cz],
-        [cx, cy, cz - 1], [cx, cy, cz + 1],
-      ];
-      for (const [nx, ny, nz] of neighbors) {
-        const nChunk = this.getChunk(nx, ny, nz);
-        if (nChunk) nChunk.dirty = true;
-      }
+      this.dirtyChunks.delete(chunk);
     }
 
-    // Rebuild dirty chunks
-    for (const chunk of this.chunks.values()) {
-      if (chunk.dirty) this.rebuildChunk(chunk);
-    }
-
-    // BFS occlusion culling: only show chunks reachable through non-solid faces
+    // Phase 3: BFS occlusion culling
     const visible = this.computeVisibleChunks(pcx, pcy, pcz);
     for (const [key, chunk] of this.chunks) {
       const isVisible = visible.has(key);
@@ -242,25 +223,24 @@ export class World {
       }
     }
 
-    // Unload distant chunks (hysteresis: unload distance = render distance + buffer)
-    const unloadDist = this.renderDistance + UNLOAD_HYSTERESIS;
+    // Phase 4: Unload distant chunks
     for (const [key, chunk] of this.chunks) {
-      if (!neededChunks.has(key)) {
-        // Check if truly beyond hysteresis distance
-        const dist = this.chebyshev(
-          pcx, pcy, pcz,
-          chunk.cx, chunk.cy, chunk.cz
-        );
-        if (dist > unloadDist) {
-          for (const mesh of chunk.meshes) this.scene.remove(mesh);
-          chunk.disposeMeshes();
-          this.chunks.delete(key);
-        }
+      const dist = Math.max(
+        Math.abs(chunk.cx - pcx),
+        Math.abs(chunk.cy - pcy),
+        Math.abs(chunk.cz - pcz),
+      );
+      if (dist > unloadDist) {
+        for (const mesh of chunk.meshes) this.scene.remove(mesh);
+        chunk.disposeMeshes();
+        this.dirtyChunks.delete(chunk);
+        this.chunks.delete(key);
       }
     }
   }
 
-  /** BFS from player chunk through non-solid faces to find visible chunks */
+  /** BFS from player chunk through non-solid faces to find visible chunks.
+   *  Optimized: pre-compute dirs/opposite arrays, minimize chunkKey calls. */
   private computeVisibleChunks(pcx: number, pcy: number, pcz: number): Set<string> {
     const visible = new Set<string>();
     const queue: [number, number, number][] = [[pcx, pcy, pcz]];
@@ -280,7 +260,7 @@ export class World {
       if (visible.has(key)) continue;
       visible.add(key);
 
-      const chunk = this.getChunk(cx, cy, cz);
+      const chunk = this.chunks.get(key);
 
       for (let face = 0; face < 6; face++) {
         const [dx, dy, dz] = dirs[face];
@@ -292,14 +272,15 @@ export class World {
         if (Math.abs(nx - pcx) > maxBfsDist || Math.abs(nz - pcz) > maxBfsDist) continue;
         if (Math.abs(ny - pcy) > RENDER_DISTANCE_Y + 1) continue;
 
+        // Pre-compute neighbor key to avoid double chunkKey call
         const nKey = this.chunkKey(nx, ny, nz);
         if (visible.has(nKey)) continue;
-        if (!this.chunks.has(nKey)) continue;
 
         // Occlusion: stop if exit face or entry face is solid
         if (chunk && chunk.faceSolid[face]) continue;
-        const neighborChunk = this.getChunk(nx, ny, nz);
-        if (neighborChunk && neighborChunk.faceSolid[opposite[face]]) continue;
+        const neighborChunk = this.chunks.get(nKey);
+        if (!neighborChunk) continue;
+        if (neighborChunk.faceSolid[opposite[face]]) continue;
 
         queue.push([nx, ny, nz]);
       }
