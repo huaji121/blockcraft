@@ -455,20 +455,23 @@ export class Player extends Entity {
         const bx = blockHit.blockPos.x;
         const by = blockHit.blockPos.y;
         const bz = blockHit.blockPos.z;
-        const hardness = BLOCK_DATA[blockHit.blockType].hardness;
 
-        // Instant break ability (breaks anything including bedrock)
-        if (this.instBreakEnabled && now - this.lastBreakTime > this.breakCooldown) {
-          this.world.setBlock(bx, by, bz, BlockType.AIR);
-          this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
-          this.lastBreakTime = now;
+        // Instant break ability — immediate break, cooldown after
+        if (this.instBreakEnabled) {
+          if (now - this.lastBreakTime > this.breakCooldown) {
+            this.world.setBlock(bx, by, bz, BlockType.AIR);
+            this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
+            this.lastBreakTime = now;
+          }
           this.miningPos = null;
           this.miningProgress = 0;
           this.destroyOverlay.visible = false;
           return;
         }
 
-        // Unbreakable (only checked when instbreak is off)
+        const hardness = BLOCK_DATA[blockHit.blockType].hardness;
+
+        // Unbreakable
         if (hardness < 0) {
           this.miningPos = null;
           this.miningProgress = 0;
