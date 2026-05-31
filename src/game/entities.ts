@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ITEM_REGISTRY } from './items';
 import { BLOCK_DATA } from './blocks';
 import type { ParticleManager } from './particles';
-import { ENTITY_PUSH_FORCE, PLAYER_PUSH_FORCE } from './constants';
+import { ENTITY_PUSH_FORCE } from './constants';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -27,12 +27,12 @@ export class Entity {
   public width: number = ENTITY_WIDTH;
   public height: number = ENTITY_HEIGHT;
   public pushForce: number = ENTITY_PUSH_FORCE;
+  public isGrounded: boolean = false;
 
   private flashUntil: number = 0;
   private originalColor: THREE.Color;
   protected material: THREE.MeshLambertMaterial;
   protected scene: THREE.Scene;
-  private isGrounded: boolean = false;
 
   constructor(scene: THREE.Scene, position: THREE.Vector3, color: number = 0xcc8844) {
     this.scene = scene;
@@ -59,27 +59,37 @@ export class Entity {
     this.velocity.z += knockbackDir.z * KNOCKBACK_STRENGTH;
   }
 
+  /** Template method: subclasses override prePhysics() for input/velocity setup */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected prePhysics(dt: number): void {}
+
   update(
     dt: number,
     getBlock: (x: number, y: number, z: number) => number,
-    collidesEntity?: (
-      x: number, y: number, z: number, w: number, h: number, self: Entity,
-    ) => { entity: Entity; overlap: { x: number; y: number; z: number } } | null,
+    applyFriction: boolean = true,
   ): boolean {
     if (performance.now() > this.flashUntil) {
       this.material.color.copy(this.originalColor);
     }
 
-    this.isGrounded = this.checkGrounded(getBlock);
-
-    if (this.isGrounded) {
+    // Ground friction (before input so entities decelerate naturally)
+    if (applyFriction && this.isGrounded) {
       this.velocity.y = 0;
       const friction = Math.exp(-GROUND_FRICTION * dt);
       this.velocity.x *= friction;
       this.velocity.z *= friction;
       if (Math.abs(this.velocity.x) < 0.01) this.velocity.x = 0;
       if (Math.abs(this.velocity.z) < 0.01) this.velocity.z = 0;
-    } else {
+    }
+
+    // Hook for subclasses (Player sets velocity from input here)
+    this.prePhysics(dt);
+
+    // Grounded check (after prePhysics so jump isGrounded=false isn't overridden)
+    this.isGrounded = this.checkGrounded(getBlock);
+
+    // Gravity (after grounded check)
+    if (!this.isGrounded) {
       this.velocity.y -= ENTITY_GRAVITY * dt;
     }
 
@@ -89,13 +99,6 @@ export class Entity {
       this.position.x -= this.velocity.x * dt;
       this.velocity.x = 0;
     }
-    if (collidesEntity) {
-      const hit = collidesEntity(this.position.x, this.position.y, this.position.z, this.width, this.height, this);
-      if (hit) {
-        const sign = this.position.x < hit.entity.position.x ? -1 : 1;
-        this.position.x += sign * hit.overlap.x;
-      }
-    }
 
     // Z axis
     this.position.z += this.velocity.z * dt;
@@ -103,61 +106,34 @@ export class Entity {
       this.position.z -= this.velocity.z * dt;
       this.velocity.z = 0;
     }
-    if (collidesEntity) {
-      const hit = collidesEntity(this.position.x, this.position.y, this.position.z, this.width, this.height, this);
-      if (hit) {
-        const sign = this.position.z < hit.entity.position.z ? -1 : 1;
-        this.position.z += sign * hit.overlap.z;
-      }
-    }
 
     // Y axis
     this.position.y += this.velocity.y * dt;
     if (this.collides(getBlock)) {
       if (this.velocity.y <= 0) {
-        this.position.y = Math.floor(this.position.y) + 1;
+        this.position.y = Math.floor(this.position.y - 0.001) + 1;
         this.isGrounded = true;
       } else {
         this.position.y -= this.velocity.y * dt;
       }
       this.velocity.y = 0;
     }
-    // Entity collision on Y — snap to top of entity below (like landing on a block)
-    if (collidesEntity) {
-      const hit = collidesEntity(this.position.x, this.position.y, this.position.z, this.width, this.height, this);
-      if (hit) {
-        if (this.velocity.y <= 0 && this.position.y >= hit.entity.position.y) {
-          // Falling onto entity below — snap on top
-          this.position.y = hit.entity.position.y + hit.entity.height;
-          this.velocity.y = 0;
-          this.isGrounded = true;
-        } else if (this.velocity.y > 0 && this.position.y <= hit.entity.position.y) {
-          // Jumping into entity above — block upward movement
-          this.position.y -= hit.overlap.y;
-          this.velocity.y = 0;
-        } else {
-          // Lateral overlap — push out horizontally
-          const dx = this.position.x - hit.entity.position.x;
-          const dz = this.position.z - hit.entity.position.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist > 0.001) {
-            this.position.x += (dx / dist) * hit.overlap.x;
-            this.position.z += (dz / dist) * hit.overlap.z;
-          }
-        }
-      }
-    }
 
+    this.syncMeshPosition();
+
+    return this.hp <= 0;
+  }
+
+  /** Sync the Three.js mesh position to the entity's logical position */
+  syncMeshPosition(): void {
     this.mesh.position.set(
       this.position.x,
       this.position.y + this.height / 2,
       this.position.z
     );
-
-    return this.hp <= 0;
   }
 
-  private checkGrounded(getBlock: (x: number, y: number, z: number) => number): boolean {
+  protected checkGrounded(getBlock: (x: number, y: number, z: number) => number): boolean {
     const halfW = this.width / 2;
     const testY = this.position.y - 0.01;
     const minX = Math.floor(this.position.x - halfW + 0.01);
@@ -174,11 +150,11 @@ export class Entity {
     return false;
   }
 
-  private collides(getBlock: (x: number, y: number, z: number) => number): boolean {
+  protected collides(getBlock: (x: number, y: number, z: number) => number): boolean {
     return this.collidesAt(getBlock, this.position);
   }
 
-  private collidesAt(getBlock: (x: number, y: number, z: number) => number, pos: THREE.Vector3): boolean {
+  protected collidesAt(getBlock: (x: number, y: number, z: number) => number, pos: THREE.Vector3): boolean {
     const halfW = this.width / 2;
     const minX = Math.floor(pos.x - halfW);
     const maxX = Math.floor(pos.x + halfW);
@@ -326,9 +302,6 @@ export class DroppedItem extends Entity {
   update(
     dt: number,
     getBlock: (x: number, y: number, z: number) => number,
-    collidesEntity?: (
-      x: number, y: number, z: number, w: number, h: number, self: Entity,
-    ) => { entity: Entity; overlap: { x: number; y: number; z: number } } | null,
   ): boolean {
     // Rotate slowly
     this.mesh.rotation.y += dt * 2;
@@ -336,17 +309,25 @@ export class DroppedItem extends Entity {
     // Check lifetime
     if (performance.now() - this.spawnTime > DROP_LIFETIME) return true;
 
-    return super.update(dt, getBlock, collidesEntity);
+    return super.update(dt, getBlock);
   }
 }
 
 // ── Entity Manager ──
+
+/** AABB representation for collision checks */
+interface AABB {
+  minX: number; maxX: number;
+  minY: number; maxY: number;
+  minZ: number; maxZ: number;
+}
 
 export class EntityManager {
   private entities: Entity[] = [];
   private scene: THREE.Scene;
   private particleManager: ParticleManager | null = null;
   private onItemPickup: ((itemId: number, count: number) => boolean) | null = null;
+  private playerRef: Entity | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -358,6 +339,10 @@ export class EntityManager {
 
   setOnItemPickup(fn: (itemId: number, count: number) => boolean): void {
     this.onItemPickup = fn;
+  }
+
+  setPlayerRef(player: Entity): void {
+    this.playerRef = player;
   }
 
   spawn(position: THREE.Vector3): Entity {
@@ -408,8 +393,9 @@ export class EntityManager {
     return closest;
   }
 
-  update(dt: number, getBlock: (x: number, y: number, z: number) => number, playerPos: THREE.Vector3 | null): void {
+  update(dt: number, getBlock: (x: number, y: number, z: number) => number): void {
     // Collect dropped items near player
+    const playerPos = this.playerRef?.position ?? null;
     if (playerPos && this.onItemPickup) {
       for (let i = this.entities.length - 1; i >= 0; i--) {
         const e = this.entities[i];
@@ -452,29 +438,10 @@ export class EntityManager {
       }
     }
 
-    // Build inline entity collision callback
-    const collidesEntity = (
-      x: number, y: number, z: number, w: number, h: number, self: Entity,
-    ): { entity: Entity; overlap: { x: number; y: number; z: number } } | null => {
-      const halfW = w / 2;
-      for (const other of this.entities) {
-        if (other === self || other instanceof DroppedItem) continue;
-        const oHalfW = other.width / 2;
-        const overlapX = Math.min(x + halfW - (other.position.x - oHalfW), other.position.x + oHalfW - (x - halfW));
-        if (overlapX <= 0) continue;
-        const overlapY = Math.min(y + h - other.position.y, other.position.y + other.height - y);
-        if (overlapY <= 0) continue;
-        const overlapZ = Math.min(z + halfW - (other.position.z - oHalfW), other.position.z + oHalfW - (z - halfW));
-        if (overlapZ <= 0) continue;
-        return { entity: other, overlap: { x: overlapX, y: overlapY, z: overlapZ } };
-      }
-      return null;
-    };
-
-    // Update all entities
+    // Update all entities (block-world collision + physics only)
     for (let i = this.entities.length - 1; i >= 0; i--) {
       const entity = this.entities[i];
-      const shouldRemove = entity.update(dt, getBlock, collidesEntity);
+      const shouldRemove = entity.update(dt, getBlock);
       if (shouldRemove) {
         // Spawn death particles for non-item entities
         if (!(entity instanceof DroppedItem) && this.particleManager) {
@@ -490,34 +457,95 @@ export class EntityManager {
     }
   }
 
-  /** Push entities away from the player. Entity-entity collision is handled inline in Entity.update. */
-  pushEntitiesFromPlayer(
-    playerAABB: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number },
-    dt: number,
-  ): void {
-    for (const entity of this.entities) {
-      const eAABB = entity.getAABB();
+  /** Unified collision resolution for all collidable entities (including player). */
+  resolveCollisions(): void {
+    // Collect all collidable objects (entities + player, excluding DroppedItems)
+    const collidables: Entity[] = [];
+    for (const e of this.entities) {
+      if (!(e instanceof DroppedItem)) collidables.push(e);
+    }
+    // Player is a separate Entity, add to collidables
+    if (this.playerRef) collidables.push(this.playerRef);
 
-      if (playerAABB.maxX <= eAABB.minX || playerAABB.minX >= eAABB.maxX) continue;
-      if (playerAABB.maxY <= eAABB.minY || playerAABB.minY >= eAABB.maxY) continue;
-      if (playerAABB.maxZ <= eAABB.minZ || playerAABB.minZ >= eAABB.maxZ) continue;
+    // Resolve all pairs
+    for (let i = 0; i < collidables.length; i++) {
+      const a = collidables[i];
+      const aAABB = a.getAABB();
 
-      const pcx = (playerAABB.minX + playerAABB.maxX) * 0.5;
-      const pcz = (playerAABB.minZ + playerAABB.maxZ) * 0.5;
-      const ecx = (eAABB.minX + eAABB.maxX) * 0.5;
-      const ecz = (eAABB.minZ + eAABB.maxZ) * 0.5;
-      const dx = ecx - pcx;
-      const dz = ecz - pcz;
-      const dist = Math.sqrt(dx * dx + dz * dz);
+      for (let j = i + 1; j < collidables.length; j++) {
+        const b = collidables[j];
+        const overlap = this.computeOverlap(aAABB, b.getAABB());
+        if (!overlap) continue;
 
-      const pushForce = PLAYER_PUSH_FORCE * dt;
-
-      if (dist < 0.001) {
-        entity.velocity.x += pushForce;
-      } else {
-        entity.velocity.x += (dx / dist) * pushForce;
-        entity.velocity.z += (dz / dist) * pushForce;
+        this.resolvePairSymmetric(a, b, overlap);
+        // Refresh AABB after position change
+        aAABB.minX = a.position.x - a.width / 2;
+        aAABB.maxX = a.position.x + a.width / 2;
+        aAABB.minY = a.position.y;
+        aAABB.maxY = a.position.y + a.height;
+        aAABB.minZ = a.position.z - a.width / 2;
+        aAABB.maxZ = a.position.z + a.width / 2;
       }
+
+      a.syncMeshPosition();
+    }
+  }
+
+  /** Compute AABB overlap between two boxes. Returns null if no overlap. */
+  private computeOverlap(a: AABB, b: AABB): { x: number; y: number; z: number } | null {
+    const overlapX = Math.min(a.maxX - b.minX, b.maxX - a.minX);
+    if (overlapX <= 0) return null;
+    const overlapY = Math.min(a.maxY - b.minY, b.maxY - a.minY);
+    if (overlapY <= 0) return null;
+    const overlapZ = Math.min(a.maxZ - b.minZ, b.maxZ - a.minZ);
+    if (overlapZ <= 0) return null;
+    return { x: overlapX, y: overlapY, z: overlapZ };
+  }
+
+  /** Resolve collision between two entities — both move equally. */
+  private resolvePairSymmetric(a: Entity, b: Entity, overlap: { x: number; y: number; z: number }): void {
+    // Y-axis priority: stacking
+    if (a.velocity.y <= 0 && a.position.y >= b.position.y) {
+      // A falling onto B — snap A on top
+      a.position.y = b.position.y + b.height;
+      a.velocity.y = 0;
+      a.isGrounded = true;
+      return;
+    }
+    if (b.velocity.y <= 0 && b.position.y >= a.position.y) {
+      // B falling onto A — snap B on top
+      b.position.y = a.position.y + a.height;
+      b.velocity.y = 0;
+      b.isGrounded = true;
+      return;
+    }
+    if (a.velocity.y > 0 && a.position.y <= b.position.y) {
+      // A jumping into B from below
+      a.position.y -= overlap.y;
+      a.velocity.y = 0;
+      return;
+    }
+    if (b.velocity.y > 0 && b.position.y <= a.position.y) {
+      // B jumping into A from below
+      b.position.y -= overlap.y;
+      b.velocity.y = 0;
+      return;
+    }
+
+    // Lateral push — both move half the overlap along minimum penetration axis
+    const dx = a.position.x - b.position.x;
+    const dz = a.position.z - b.position.z;
+
+    if (overlap.x <= overlap.z) {
+      const push = overlap.x * 0.5;
+      const sign = dx >= 0 ? 1 : -1;
+      a.position.x += sign * push;
+      b.position.x -= sign * push;
+    } else {
+      const push = overlap.z * 0.5;
+      const sign = dz >= 0 ? 1 : -1;
+      a.position.z += sign * push;
+      b.position.z -= sign * push;
     }
   }
 

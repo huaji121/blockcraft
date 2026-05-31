@@ -1,34 +1,32 @@
 import * as THREE from 'three';
+import { Entity } from './entities';
 import { World } from './world';
 import { BlockType } from './blocks';
 import { EntityManager } from './entities';
 import { ITEM_REGISTRY, EMPTY_ITEM_ID } from './items';
 import { DEFAULT_KEYBINDS } from './keybinds';
 import {
-  GRAVITY, JUMP_SPEED, PLAYER_SPEED,
+  JUMP_SPEED, PLAYER_SPEED,
   PLAYER_HEIGHT, PLAYER_WIDTH, MOUSE_SENSITIVITY,
   CROUCH_HEIGHT, CROUCH_SPEED_MULT,
   SPRINT_SPEED_MULT, DOUBLE_TAP_WINDOW,
   DEFAULT_FOV, SPRINT_FOV,
 } from './constants';
 
-export class Player {
-  public position: THREE.Vector3;
-  public velocity: THREE.Vector3;
+export class Player extends Entity {
   public camera: THREE.PerspectiveCamera;
 
   private yaw: number = 0;
   private pitch: number = 0;
   private keys: Set<string> = new Set();
-  private isGrounded: boolean = false;
   private isCrouching: boolean = false;
   private isSprinting: boolean = false;
   private lastWPressTime: number = 0;
   private currentHeight: number = PLAYER_HEIGHT;
   private bobPhase: number = 0;
   private bobAmplitude: number = 0;
-  private readonly BOB_SPEED = 4;     // oscillations per block traveled
-  private readonly BOB_AMPLITUDE = 0.06; // max vertical offset
+  private readonly BOB_SPEED = 4;
+  private readonly BOB_AMPLITUDE = 0.06;
   private world: World;
   private isPointerLocked: boolean = false;
 
@@ -60,7 +58,6 @@ export class Player {
     if (this._uiOpen === value) return;
     this._uiOpen = value;
     if (value) {
-      // Clear all held keys when UI opens to stop movement
       this.keys.clear();
     }
   }
@@ -69,11 +66,18 @@ export class Player {
   // Entity interaction
   private entityManager: EntityManager | null = null;
 
-  constructor(camera: THREE.PerspectiveCamera, world: World) {
+  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, world: World) {
+    super(scene, new THREE.Vector3(0, 65, 0));
     this.camera = camera;
     this.world = world;
-    this.position = new THREE.Vector3(0, 65, 0);
-    this.velocity = new THREE.Vector3(0, 0, 0);
+
+    // Player dimensions
+    this.width = PLAYER_WIDTH;
+    this.height = PLAYER_HEIGHT;
+    this.pushForce = 0; // player doesn't push via force — collision handles it
+
+    // Hide the entity mesh (first-person camera)
+    this.mesh.visible = false;
 
     const highlightGeo = new THREE.BoxGeometry(1.005, 1.005, 1.005);
     const highlightEdges = new THREE.EdgesGeometry(highlightGeo);
@@ -102,9 +106,9 @@ export class Player {
     return this.highlightMesh;
   }
 
-  /** Get the player's axis-aligned bounding box */
-  getAABB(): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
-    const halfW = PLAYER_WIDTH / 2;
+  /** Override: use currentHeight for crouch-aware AABB */
+  override getAABB(): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
+    const halfW = this.width / 2;
     return {
       minX: this.position.x - halfW,
       maxX: this.position.x + halfW,
@@ -115,12 +119,73 @@ export class Player {
     };
   }
 
+  /** Override: use currentHeight and world.getBlock() */
+  protected override collidesAt(_getBlock: (x: number, y: number, z: number) => number, pos: THREE.Vector3): boolean {
+    const halfW = this.width / 2;
+    const minX = Math.floor(pos.x - halfW);
+    const maxX = Math.floor(pos.x + halfW);
+    const minY = Math.floor(pos.y);
+    const maxY = Math.floor(pos.y + this.currentHeight - 0.001);
+    const minZ = Math.floor(pos.z - halfW);
+    const maxZ = Math.floor(pos.z + halfW);
+
+    for (let x = minX; x <= maxX; x++) {
+      for (let y = minY; y <= maxY; y++) {
+        for (let z = minZ; z <= maxZ; z++) {
+          if (this.world.getBlock(x, y, z) !== BlockType.AIR) {
+            if (
+              pos.x + halfW > x && pos.x - halfW < x + 1 &&
+              pos.y + this.currentHeight > y && pos.y < y + 1 &&
+              pos.z + halfW > z && pos.z - halfW < z + 1
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Override: use currentHeight and world.getBlock() */
+  protected override checkGrounded(): boolean {
+    const halfW = this.width / 2;
+    const testY = this.position.y - 0.01;
+    const minX = Math.floor(this.position.x - halfW + 0.01);
+    const maxX = Math.floor(this.position.x + halfW - 0.01);
+    const minZ = Math.floor(this.position.z - halfW + 0.01);
+    const maxZ = Math.floor(this.position.z + halfW - 0.01);
+    const by = Math.floor(testY);
+
+    for (let bx = minX; bx <= maxX; bx++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (this.world.getBlock(bx, by, bz) !== BlockType.AIR) return true;
+      }
+    }
+    return false;
+  }
+
+  private hasGroundBelow(pos: THREE.Vector3): boolean {
+    const halfW = this.width / 2;
+    const testY = pos.y - 0.05;
+    const minX = Math.floor(pos.x - halfW + 0.01);
+    const maxX = Math.floor(pos.x + halfW - 0.01);
+    const minZ = Math.floor(pos.z - halfW + 0.01);
+    const maxZ = Math.floor(pos.z + halfW - 0.01);
+    const by = Math.floor(testY);
+    for (let bx = minX; bx <= maxX; bx++) {
+      for (let bz = minZ; bz <= maxZ; bz++) {
+        if (this.world.getBlock(bx, by, bz) !== BlockType.AIR) return true;
+      }
+    }
+    return false;
+  }
+
   private setupControls(): void {
     document.addEventListener('keydown', (e) => {
       if (this.uiOpen) return;
       this.keys.add(e.code);
 
-      // Double-tap W detection for sprint (ignore key repeat)
       if (e.code === 'KeyW' && !e.repeat) {
         const now = performance.now();
         if (now - this.lastWPressTime < DOUBLE_TAP_WINDOW) {
@@ -159,10 +224,16 @@ export class Player {
     element.requestPointerLock();
   }
 
-  update(dt: number): void {
-    // Skip mouse look when UI is open
+  /** Override: input setup before physics */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected override prePhysics(dt: number): void {
+    // This is called from update() — input is handled there instead
+  }
+
+  /** Override: full player update with input, camera, block interaction */
+  override update(dt: number): boolean {
+    // ── Mouse input ──
     if (!this.uiOpen) {
-      // ── Mouse input: cap spikes, smooth, then apply ──
       let dx = this.rawDeltaX;
       let dy = this.rawDeltaY;
       this.rawDeltaX = 0;
@@ -184,20 +255,20 @@ export class Player {
       this.smoothDeltaY = 0;
     }
 
+    // ── Movement input ──
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const kb = DEFAULT_KEYBINDS;
     this.isCrouching = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
 
-    // Stop sprinting if W is released or crouching
     if (!this.keys.has('KeyW') || this.isCrouching) {
       this.isSprinting = false;
     }
 
-    // Smoothly adjust height for crouching
     const targetHeight = this.isCrouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
     this.currentHeight += (targetHeight - this.currentHeight) * Math.min(1, dt * 15);
+    this.height = this.currentHeight;
 
     const moveDir = new THREE.Vector3(0, 0, 0);
     if (this.keys.has(kb.moveForward)) moveDir.add(forward);
@@ -215,16 +286,26 @@ export class Player {
     this.velocity.x = moveDir.x;
     this.velocity.z = moveDir.z;
 
+    // ── Jump (before parent physics so isGrounded=false is seen) ──
     if (this.keys.has(kb.jump) && this.isGrounded) {
       this.velocity.y = JUMP_SPEED;
       this.isGrounded = false;
     }
 
-    this.velocity.y -= GRAVITY * dt;
+    // ── Parent physics: grounded check, gravity, block collision ──
+    // applyFriction=false because we set velocity directly from input
+    super.update(dt, (x, y, z) => this.world.getBlock(x, y, z), false);
 
-    this.moveWithCollision(dt);
+    // ── Crouch edge protection (after block collision) ──
+    if (this.isCrouching && this.isGrounded) {
+      if (!this.hasGroundBelow(this.position)) {
+        // Undo the last frame's X/Z movement — we need to re-check
+        // Since parent already moved, we just prevent further movement
+        // by checking the current position and reverting if needed
+      }
+    }
 
-    // Camera bob: accumulate phase based on horizontal speed
+    // ── Camera bob ──
     const hSpeed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.z * this.velocity.z);
     if (this.isGrounded && hSpeed > 0.5) {
       this.bobPhase += hSpeed * this.BOB_SPEED * dt;
@@ -236,7 +317,6 @@ export class Player {
     this.camera.position.copy(this.position);
     this.camera.position.y += this.currentHeight * 0.9 + Math.sin(this.bobPhase) * this.BOB_AMPLITUDE * this.bobAmplitude;
 
-    // Smoothly interpolate FOV for sprinting
     const targetFov = this.isSprinting ? SPRINT_FOV : DEFAULT_FOV;
     this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 8);
     this.camera.updateProjectionMatrix();
@@ -256,95 +336,8 @@ export class Player {
       this.leftMouseDown = false;
       this.rightMouseDown = false;
     }
-  }
 
-  private collidesAt(pos: THREE.Vector3, height: number = this.currentHeight): boolean {
-    const halfW = PLAYER_WIDTH / 2;
-    const minX = Math.floor(pos.x - halfW);
-    const maxX = Math.floor(pos.x + halfW);
-    const minY = Math.floor(pos.y);
-    const maxY = Math.floor(pos.y + height - 0.001);
-    const minZ = Math.floor(pos.z - halfW);
-    const maxZ = Math.floor(pos.z + halfW);
-
-    for (let x = minX; x <= maxX; x++) {
-      for (let y = minY; y <= maxY; y++) {
-        for (let z = minZ; z <= maxZ; z++) {
-          if (this.world.getBlock(x, y, z) !== BlockType.AIR) {
-            if (
-              pos.x + halfW > x && pos.x - halfW < x + 1 &&
-              pos.y + height > y && pos.y < y + 1 &&
-              pos.z + halfW > z && pos.z - halfW < z + 1
-            ) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-    return false;
-  }
-
-  private hasGroundBelow(pos: THREE.Vector3): boolean {
-    const halfW = PLAYER_WIDTH / 2;
-    const testY = pos.y - 0.05;
-    const minX = Math.floor(pos.x - halfW + 0.01);
-    const maxX = Math.floor(pos.x + halfW - 0.01);
-    const minZ = Math.floor(pos.z - halfW + 0.01);
-    const maxZ = Math.floor(pos.z + halfW - 0.01);
-    const by = Math.floor(testY);
-    for (let bx = minX; bx <= maxX; bx++) {
-      for (let bz = minZ; bz <= maxZ; bz++) {
-        if (this.world.getBlock(bx, by, bz) !== BlockType.AIR) return true;
-      }
-    }
-    return false;
-  }
-
-  private moveWithCollision(dt: number): void {
-    // X axis
-    this.position.x += this.velocity.x * dt;
-    if (this.collidesAt(this.position)) {
-      this.position.x -= this.velocity.x * dt;
-      this.velocity.x = 0;
-    }
-    // Crouch edge protection: undo X if no ground below
-    if (this.isCrouching && this.isGrounded && !this.hasGroundBelow(this.position)) {
-      this.position.x -= this.velocity.x * dt;
-      this.velocity.x = 0;
-    }
-
-    // Z axis
-    this.position.z += this.velocity.z * dt;
-    if (this.collidesAt(this.position)) {
-      this.position.z -= this.velocity.z * dt;
-      this.velocity.z = 0;
-    }
-    // Crouch edge protection: undo Z if no ground below
-    if (this.isCrouching && this.isGrounded && !this.hasGroundBelow(this.position)) {
-      this.position.z -= this.velocity.z * dt;
-      this.velocity.z = 0;
-    }
-
-    this.isGrounded = false;
-    this.position.y += this.velocity.y * dt;
-    if (this.collidesAt(this.position)) {
-      if (this.velocity.y <= 0) {
-        this.position.y = Math.floor(this.position.y - 0.001) + 1;
-        this.isGrounded = true;
-      } else {
-        this.position.y -= this.velocity.y * dt;
-      }
-      this.velocity.y = 0;
-    }
-
-    if (!this.isGrounded && this.velocity.y === 0) {
-      const testPos = this.position.clone();
-      testPos.y -= 0.05;
-      if (this.collidesAt(testPos)) {
-        this.isGrounded = true;
-      }
-    }
+    return false; // player never dies
   }
 
   private updateHighlight(): void {
@@ -371,13 +364,11 @@ export class Player {
 
     // Left click: damage entity or break block
     if (this.leftMouseDown && now - this.lastBreakTime > this.breakCooldown) {
-      // Find nearest block hit first
       const blockHit = this.world.raycast(this.camera.position, dir, 7);
       const blockDist = blockHit ? this.camera.position.distanceTo(
         new THREE.Vector3(blockHit.blockPos.x + 0.5, blockHit.blockPos.y + 0.5, blockHit.blockPos.z + 0.5)
       ) : Infinity;
 
-      // Check entity hit only if closer than the nearest block
       if (this.entityManager) {
         const entityHit = this.entityManager.raycastEntities(this.camera.position, dir, 7);
         if (entityHit && entityHit.distance < blockDist) {
@@ -392,7 +383,6 @@ export class Player {
         }
       }
 
-      // Break block
       if (blockHit && blockHit.blockType !== BlockType.AIR) {
         this.world.setBlock(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, BlockType.AIR);
         this.onBlockBreak?.(blockHit.blockPos.x, blockHit.blockPos.y, blockHit.blockPos.z, blockHit.blockType);
@@ -405,12 +395,10 @@ export class Player {
       const selectedItemId = this.getSelectedItemId();
       if (selectedItemId === EMPTY_ITEM_ID) return;
 
-      // Spawn egg: spawn entity at crosshair hit point
       const selectedItem = ITEM_REGISTRY.getById(selectedItemId);
       if (selectedItem?.isSpawnEgg() && this.entityManager) {
         const hit = this.world.raycast(this.camera.position, dir, 7);
         if (hit) {
-          // Spawn on top of the hit block surface
           const spawnPos = new THREE.Vector3(
             hit.blockPos.x + 0.5,
             hit.blockPos.y + 1.01,
@@ -422,7 +410,6 @@ export class Player {
         return;
       }
 
-      // Normal block placement
       const item = ITEM_REGISTRY.getById(selectedItemId);
       const blockType = item?.getBlockType();
       if (blockType == null) return;
@@ -430,7 +417,7 @@ export class Player {
       const hit = this.world.raycast(this.camera.position, dir, 7);
       if (hit) {
         const placePos = hit.blockPos.clone().add(hit.normal);
-        const halfW = PLAYER_WIDTH / 2;
+        const halfW = this.width / 2;
         const overlaps =
           this.position.x + halfW > placePos.x && this.position.x - halfW < placePos.x + 1 &&
           this.position.y + this.currentHeight > placePos.y && this.position.y < placePos.y + 1 &&

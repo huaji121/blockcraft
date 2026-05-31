@@ -3,7 +3,7 @@ import { World } from './world';
 import { Player } from './player';
 import { ParticleManager } from './particles';
 import { EntityManager } from './entities';
-import { BLOCK_DATA, getBlockFaceTexture } from './blocks';
+import { getBlockFaceTexture } from './blocks';
 import { DEFAULT_FOV } from './constants';
 
 export interface EngineSettings {
@@ -69,7 +69,8 @@ export class GameEngine {
     this.particles = new ParticleManager(this.scene);
     this.entityManager = new EntityManager(this.scene);
     this.entityManager.setParticleManager(this.particles);
-    this.player = new Player(this.camera, this.world);
+    this.player = new Player(this.scene, this.camera, this.world);
+    this.entityManager.setPlayerRef(this.player);
     this.player.setEntityManager(this.entityManager);
 
     this.scene.add(this.player.getHighlightMesh());
@@ -198,8 +199,8 @@ export class GameEngine {
 
     this.player.update(dt);
     this.world.update(this.player.position.x, this.player.position.y, this.player.position.z);
-    this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z), this.player.position);
-    this.entityManager.pushEntitiesFromPlayer(this.player.getAABB(), dt);
+    this.entityManager.update(dt, (x, y, z) => this.world.getBlock(x, y, z));
+    this.entityManager.resolveCollisions();
     this.particles.update(dt);
 
     // Re-apply wireframe after chunk rebuilds
