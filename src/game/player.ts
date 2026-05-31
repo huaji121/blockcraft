@@ -57,12 +57,12 @@ export class Player extends Entity {
   private destroyOverlay: THREE.Mesh;
   private destroyMaterials: THREE.MeshBasicMaterial[] = [];
 
-  // Abilities
-  public flyEnabled: boolean = false;
+  // Abilities (default: creative mode)
+  public flyEnabled: boolean = true;
   public isFlying: boolean = false;
   private lastSpacePressTime: number = 0;
-  public infItemEnabled: boolean = false;
-  public instBreakEnabled: boolean = false;
+  public infItemEnabled: boolean = true;
+  public instBreakEnabled: boolean = true;
   public creativeBackpackEnabled: boolean = true;
 
   // Inventory integration

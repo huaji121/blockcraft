@@ -281,7 +281,7 @@ export function Game() {
   heldItemRef.current = heldItem;
   const isBackpackOpenRef = useRef(isBackpackOpen);
   isBackpackOpenRef.current = isBackpackOpen;
-  const infItemRef = useRef(false);
+  const infItemRef = useRef(true);
   const hoveredSlotRef = useRef(hoveredSlot);
   hoveredSlotRef.current = hoveredSlot;
   const isChatOpenRef = useRef(isChatOpen);
