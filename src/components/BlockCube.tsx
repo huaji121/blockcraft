@@ -1,4 +1,5 @@
 import { ITEM_REGISTRY } from '../game/items';
+import { BLOCK_TEXTURE_TINTS } from '../game/blocks';
 
 interface Props {
   itemId: number;
@@ -14,16 +15,23 @@ export function BlockCube({ itemId, size = 28 }: Props) {
   const side = item.getFaceTexture('side');
   const half = size / 2;
 
-  const face = (bg: string, transform: string): React.CSSProperties => ({
-    position: 'absolute',
-    width: size,
-    height: size,
-    backgroundImage: `url(${bg})`,
-    backgroundSize: 'cover',
-    imageRendering: 'pixelated' as const,
-    backfaceVisibility: 'hidden' as const,
-    transform,
-  });
+  const face = (bg: string, transform: string): React.CSSProperties => {
+    const tint = BLOCK_TEXTURE_TINTS[bg];
+    return {
+      position: 'absolute',
+      width: size,
+      height: size,
+      backgroundImage: `url(${bg})`,
+      backgroundSize: 'cover',
+      imageRendering: 'pixelated' as const,
+      backfaceVisibility: 'hidden' as const,
+      transform,
+      ...(tint && {
+        backgroundColor: tint,
+        backgroundBlendMode: 'multiply' as const,
+      }),
+    };
+  };
 
   return (
     <div style={{

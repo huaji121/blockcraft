@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Chunk } from './chunk';
 import { TerrainNoise } from './noise';
-import { BlockType, BLOCK_DATA, ALL_BLOCKS } from './blocks';
+import { BlockType, BLOCK_DATA, ALL_BLOCKS, BLOCK_TEXTURE_TINTS } from './blocks';
 import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME } from './constants';
 import { TextureAtlas } from './atlas';
 
@@ -40,14 +40,19 @@ export class World {
       Chunk.initMaterials(this.atlas);
       this.ready = true;
       for (const chunk of this.chunks.values()) chunk.dirty = true;
-    });
+    }, new Map(Object.entries(BLOCK_TEXTURE_TINTS)));
 
     for (const path of paths) {
-      const tex = this.loader.load(path);
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.generateMipmaps = false;
-      tex.colorSpace = THREE.SRGBColorSpace;
+      const tint = BLOCK_TEXTURE_TINTS[path];
+      const tex = tint
+        ? TextureAtlas.createTintedTexture(path, tint)
+        : this.loader.load(path);
+      if (!tint) {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
+        tex.colorSpace = THREE.SRGBColorSpace;
+      }
       this.individualTextures.set(path, tex);
     }
 

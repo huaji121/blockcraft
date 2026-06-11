@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { ITEM_REGISTRY } from './items';
-import { BLOCK_DATA } from './blocks';
+import { BLOCK_DATA, BLOCK_TEXTURE_TINTS } from './blocks';
 import type { ParticleManager } from './particles';
 import { ENTITY_PUSH_FORCE } from './constants';
+import { TextureAtlas } from './atlas';
 
 const ENTITY_WIDTH = 0.6;
 const ENTITY_HEIGHT = 1.2;
@@ -217,11 +218,16 @@ export class DroppedItem extends Entity {
     if (!path) return null;
     let tex = DroppedItem.texCache.get(path);
     if (!tex) {
-      tex = DroppedItem.loader.load(path);
-      tex.magFilter = THREE.NearestFilter;
-      tex.minFilter = THREE.NearestFilter;
-      tex.generateMipmaps = false;
-      tex.colorSpace = THREE.SRGBColorSpace;
+      const tint = BLOCK_TEXTURE_TINTS[path];
+      tex = tint
+        ? TextureAtlas.createTintedTexture(path, tint)
+        : DroppedItem.loader.load(path);
+      if (!tint) {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
+        tex.colorSpace = THREE.SRGBColorSpace;
+      }
       DroppedItem.texCache.set(path, tex);
     }
     return tex;

@@ -17,8 +17,10 @@ export class TextureAtlas {
     this.loader = loader;
   }
 
-  /** Build atlas from a list of texture paths. Calls onLoad when done. */
-  build(paths: string[], onLoad: () => void): void {
+  /** Build atlas from a list of texture paths. Calls onLoad when done.
+   *  @param tints Optional map from texture path to CSS color — applies a
+   *               multiply overlay to colorize grayscale textures (e.g. leaves). */
+  build(paths: string[], onLoad: () => void, tints?: Map<string, string>): void {
     // Deduplicate and assign grid positions
     const unique = [...new Set(paths.filter(Boolean))];
     this.gridSize = Math.ceil(Math.sqrt(unique.length));
@@ -51,6 +53,15 @@ export class TextureAtlas {
       const img = new Image();
       img.onload = () => {
         ctx.drawImage(img, pos.col * this.tilePx, pos.row * this.tilePx, this.tilePx, this.tilePx);
+
+        // Apply color tint for grayscale textures (e.g. leaves → green)
+        if (tints?.has(path)) {
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.fillStyle = tints.get(path)!;
+          ctx.fillRect(pos.col * this.tilePx, pos.row * this.tilePx, this.tilePx, this.tilePx);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+
         loaded++;
         if (loaded === total) {
           this.texture = new THREE.CanvasTexture(this.canvas!);
@@ -98,5 +109,52 @@ export class TextureAtlas {
       u1: (pos.col + 1) * s,
       v1: 1 - pos.row * s,
     };
+  }
+
+  /** Create a tinted texture for standalone use (dropped items, particles,
+   *  inventory icons).  Returns a CanvasTexture immediately — the image
+   *  loads asynchronously and the texture updates when ready.
+   *  @param path  Texture file path
+   *  @param tint  CSS colour to multiply-blend (e.g. "#559944"), or undefined
+   *               to load the raw texture with no tinting. */
+  static createTintedTexture(path: string, tint: string | undefined): THREE.CanvasTexture {
+    const SIZE = 16; // Minecraft textures are 16×16
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fallback: fill with tint colour (or white) so the mesh isn't black while loading
+    ctx.fillStyle = tint ?? '#ffffff';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+
+      if (tint) {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = tint;
+        ctx.fillRect(0, 0, SIZE, SIZE);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      tex.needsUpdate = true;
+    };
+    img.onerror = () => {
+      // Keep the fallback fill
+      tex.needsUpdate = true;
+    };
+    img.src = path;
+
+    return tex;
   }
 }

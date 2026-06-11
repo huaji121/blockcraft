@@ -16,6 +16,7 @@ export enum BlockType {
   IRON_ORE = 14,
   GOLD_ORE = 15,
   DIAMOND_ORE = 16,
+  OAK_LEAVES = 17,
 }
 
 export interface BlockFaceTextures {
@@ -51,6 +52,13 @@ export const BLOCK_DATA: Record<number, BlockData> = {
   [BlockType.IRON_ORE]:    { name: 'Iron Ore',     solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/iron_ore.png' },
   [BlockType.GOLD_ORE]:    { name: 'Gold Ore',     solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/gold_ore.png' },
   [BlockType.DIAMOND_ORE]: { name: 'Diamond Ore',  solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/diamond_ore.png' },
+  [BlockType.OAK_LEAVES]:  { name: 'Oak Leaves',  solid: true,  transparent: true,  hardness: 0.5,texture: '/assets/textures/block/oak_leaves.png' },
+};
+
+/** Textures that should be tinted a specific color during atlas packing.
+ *  Used for grayscale textures (like leaves) that need biome coloring. */
+export const BLOCK_TEXTURE_TINTS: Record<string, string> = {
+  '/assets/textures/block/oak_leaves.png': '#559944',
 };
 
 /** Get the texture path for a specific face of a block */
