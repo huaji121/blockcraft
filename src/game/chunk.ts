@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CHUNK_SIZE, BLOCK_SIZE } from './constants';
 import { BlockType, BLOCK_DATA, getBlockFaceTexture } from './blocks';
 import type { TextureAtlas } from './atlas';
+import { BiomeType, BIOME_DATA } from './biome';
 
 export class Chunk {
   public blocks: Uint8Array;
@@ -28,12 +29,14 @@ export class Chunk {
     });
     // Cutout (alpha-tested): pixels are either fully opaque or fully discarded.
     // Used for leaves, where the texture alpha channel defines the shape.
+    // vertexColors multiplies per-vertex biome tints with the atlas leaf colour.
     Chunk.alphaTestMaterial = new THREE.MeshLambertMaterial({
       map: tex,
       side: THREE.DoubleSide,
       transparent: false,
       alphaTest: 0.5,
       depthWrite: true,
+      vertexColors: true,
     });
     // Semi-transparent: uniform opacity for blocks like glass.
     Chunk.transparentMaterial = new THREE.MeshLambertMaterial({
@@ -164,7 +167,8 @@ export class Chunk {
 
   buildMeshes(
     atlas: TextureAtlas,
-    getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType
+    getNeighborBlock: (wx: number, wy: number, wz: number) => BlockType,
+    getBiome?: (wx: number, wz: number) => BiomeType,
   ): void {
     this.disposeMeshes();
 
@@ -180,6 +184,7 @@ export class Chunk {
     const semiTransNorm: number[] = [];
     const semiTransUv: number[] = [];
     const semiTransIdx: number[] = [];
+    const cutoutColor: number[] = [];
 
     const worldX0 = this.cx * CHUNK_SIZE;
     const worldY0 = this.cy * CHUNK_SIZE;
@@ -216,10 +221,14 @@ export class Chunk {
           const wz = worldZ0 + z;
 
           let positions: number[], normals: number[], uvs: number[], indices: number[];
+          let colors: number[] | null = null;
+          let leafTint: [number, number, number] | null = null;
           if (!isTransparent) {
             positions = opaquePos; normals = opaqueNorm; uvs = opaqueUv; indices = opaqueIdx;
           } else if (data.cutout) {
             positions = cutoutPos; normals = cutoutNorm; uvs = cutoutUv; indices = cutoutIdx;
+            colors = cutoutColor;
+            if (getBiome) leafTint = BIOME_DATA[getBiome(wx, wz)].leafTint;
           } else {
             positions = semiTransPos; normals = semiTransNorm; uvs = semiTransUv; indices = semiTransIdx;
           }
@@ -252,6 +261,9 @@ export class Chunk {
                 uvRect.u0 + fuvs[i][0] * (uvRect.u1 - uvRect.u0),
                 uvRect.v0 + fuvs[i][1] * (uvRect.v1 - uvRect.v0)
               );
+              if (colors && leafTint) {
+                colors.push(leafTint[0], leafTint[1], leafTint[2]);
+              }
             }
 
             indices.push(
@@ -265,7 +277,7 @@ export class Chunk {
 
     this.buildGroup(opaquePos, opaqueNorm, opaqueUv, opaqueIdx, atlas, Chunk.opaqueMaterial, 0);
     // Cutout after opaque so depth buffer is populated (solid leaf pixels occlude)
-    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 1);
+    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 1, cutoutColor);
     // Semi-transparent last — no depth write, must render after everything else
     this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 2);
     this.dirty = false;
@@ -273,7 +285,8 @@ export class Chunk {
 
   private buildGroup(
     pos: number[], norm: number[], uv: number[], idx: number[],
-    atlas: TextureAtlas, material: THREE.MeshLambertMaterial, renderOrder: number
+    atlas: TextureAtlas, material: THREE.MeshLambertMaterial, renderOrder: number,
+    colors?: number[],
   ): void {
     if (pos.length === 0) return;
 
@@ -282,6 +295,10 @@ export class Chunk {
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setIndex(idx);
+
+    if (colors && colors.length > 0) {
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    }
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(

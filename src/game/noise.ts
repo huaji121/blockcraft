@@ -36,4 +36,11 @@ export class TerrainNoise {
     const normalized = (height / maxValue + 1) * 0.5;
     return Math.floor(normalized * 30 + 40); // Surface height between 40 and 70
   }
+
+  /** Get temperature at world (x, z) for biome determination.
+   *  Uses low frequency so climate regions are broad and contiguous.
+   *  Returns roughly -1 … +1; high values = hot (desert). */
+  getTemperature(x: number, z: number): number {
+    return this.noise2D(x * 0.002, z * 0.002);
+  }
 }

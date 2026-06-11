@@ -4,6 +4,7 @@ import { TerrainNoise } from './noise';
 import { BlockType, BLOCK_DATA, ALL_BLOCKS, BLOCK_TEXTURE_TINTS } from './blocks';
 import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME } from './constants';
 import { TextureAtlas } from './atlas';
+import { BiomeType, BIOME_DATA, getBiomeFromTemperature } from './biome';
 
 export class World {
   private chunks: Map<string, Chunk> = new Map();
@@ -72,6 +73,12 @@ export class World {
   setChunksPerFrame(count: number): void { this.chunksPerFrame = count; }
   getTexture(path: string): THREE.Texture | null { return this.individualTextures.get(path) ?? null; }
 
+  /** Get the biome at a world (x, z) column. */
+  getBiomeAt(wx: number, wz: number): BiomeType {
+    const temperature = this.noise.getTemperature(wx, wz);
+    return getBiomeFromTemperature(temperature);
+  }
+
   private chunkKey(cx: number, cy: number, cz: number): string {
     return `${cx},${cy},${cz}`;
   }
@@ -137,6 +144,8 @@ export class World {
         const wz = worldZ0 + z;
         const surfaceHeight = this.noise.getHeight(wx, wz);
         const localSurfaceY = surfaceHeight - worldY0;
+        const biome = this.getBiomeAt(wx, wz);
+        const biomeData = BIOME_DATA[biome];
 
         // Record surface position for tree placement (only if surface is inside this chunk)
         if (localSurfaceY >= 0 && localSurfaceY < CHUNK_SIZE) {
@@ -147,7 +156,7 @@ export class World {
 
         for (let y = 0; y < CHUNK_SIZE; y++) {
           const wy = worldY0 + y;
-          if (wy < surfaceHeight - 3) {
+          if (wy < surfaceHeight - biomeData.subsurfaceDepth) {
             // Stone layer — check for ore placement inline
             const h = this.oreHash(wx, wy, wz);
             let blockType = BlockType.STONE;
@@ -157,9 +166,9 @@ export class World {
             else if (h < 32) blockType = BlockType.COAL_ORE;
             chunk.setBlock(x, y, z, blockType);
           } else if (wy < surfaceHeight) {
-            chunk.setBlock(x, y, z, BlockType.DIRT);
+            chunk.setBlock(x, y, z, biomeData.subsurfaceBlock);
           } else if (wy === surfaceHeight) {
-            chunk.setBlock(x, y, z, BlockType.GRASS);
+            chunk.setBlock(x, y, z, biomeData.surfaceBlock);
           }
         }
       }
@@ -176,14 +185,21 @@ export class World {
         const wz = worldZ0 + z;
         const groundY = worldY0 + localSurfaceY;
 
-        // Must be grass and pass the deterministic hash (~1 tree per chunk)
+        // Must be grass and pass the biome tree-density check
         if (chunk.getBlock(x, localSurfaceY, z) !== BlockType.GRASS) continue;
+        const biome = this.getBiomeAt(wx, wz);
+        if (BIOME_DATA[biome].treeDensity <= 0) continue;
         if (this.treeHash(wx, wz) >= 8) continue; // 8/1000 ≈ 1 tree per chunk
 
         this.placeTree(chunk, wx, groundY, wz);
       }
     }
 
+    chunk.buildMeshes(
+      this.atlas,
+      (wx, wy, wz) => this.getBlock(wx, wy, wz),
+      (wx, wz) => this.getBiomeAt(wx, wz),
+    );
     chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     chunk.dirty = false;
     return chunk;
@@ -249,7 +265,11 @@ export class World {
 
   private rebuildChunk(chunk: Chunk): void {
     for (const mesh of chunk.meshes) this.scene.remove(mesh);
-    chunk.buildMeshes(this.atlas, (wx, wy, wz) => this.getBlock(wx, wy, wz));
+    chunk.buildMeshes(
+      this.atlas,
+      (wx, wy, wz) => this.getBlock(wx, wy, wz),
+      (wx, wz) => this.getBiomeAt(wx, wz),
+    );
     chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     for (const mesh of chunk.meshes) this.scene.add(mesh);
   }
