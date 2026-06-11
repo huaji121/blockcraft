@@ -67,6 +67,7 @@ export class Player extends Entity {
   public infItemEnabled: boolean = true;
   public instBreakEnabled: boolean = true;
   public creativeBackpackEnabled: boolean = true;
+  public noBlockDropEnabled: boolean = true;
 
   // Inventory integration
   private getSelectedItemId: () => number = () => EMPTY_ITEM_ID;

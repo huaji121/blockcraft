@@ -640,6 +640,8 @@ export function Game() {
             player.instBreakEnabled = enabled;
           } else if (name === 'creativebackpack') {
             player.creativeBackpackEnabled = enabled;
+          } else if (name === 'noblockdrop') {
+            player.noBlockDropEnabled = enabled;
           }
         },
         setGamemode: (mode: number) => {
@@ -650,6 +652,7 @@ export function Game() {
           infItemRef.current = creative;
           player.flyEnabled = creative;
           if (!creative) player.isFlying = false;
+          player.noBlockDropEnabled = creative;
         },
       });
     } else {

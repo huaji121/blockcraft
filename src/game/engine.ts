@@ -83,9 +83,11 @@ export class GameEngine {
       const sideTex = this.world.getTexture(getBlockFaceTexture(blockType, 'side'));
       this.particles.spawnBlockBreak(wx, wy, wz, topTex, bottomTex, sideTex);
 
-      // Spawn dropped item at block position
-      const dropPos = new THREE.Vector3(wx + 0.5, wy + 0.5, wz + 0.5);
-      this.entityManager.spawnDroppedItem(dropPos, blockType, 1);
+      // Spawn dropped item (unless noBlockDrop ability is active)
+      if (!this.player.noBlockDropEnabled) {
+        const dropPos = new THREE.Vector3(wx + 0.5, wy + 0.5, wz + 0.5);
+        this.entityManager.spawnDroppedItem(dropPos, blockType, 1);
+      }
     });
 
 
