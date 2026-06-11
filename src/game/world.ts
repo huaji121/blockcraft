@@ -130,11 +130,20 @@ export class World {
     const worldZ0 = cz * CHUNK_SIZE;
 
     // Merged terrain + ore generation: cache surfaceHeight per column
+    const surfaceMap = new Uint8Array(CHUNK_SIZE * CHUNK_SIZE); // local_y of surface, 255 = below chunk
     for (let x = 0; x < CHUNK_SIZE; x++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX0 + x;
         const wz = worldZ0 + z;
         const surfaceHeight = this.noise.getHeight(wx, wz);
+        const localSurfaceY = surfaceHeight - worldY0;
+
+        // Record surface position for tree placement (only if surface is inside this chunk)
+        if (localSurfaceY >= 0 && localSurfaceY < CHUNK_SIZE) {
+          surfaceMap[x + z * CHUNK_SIZE] = localSurfaceY;
+        } else {
+          surfaceMap[x + z * CHUNK_SIZE] = 255;
+        }
 
         for (let y = 0; y < CHUNK_SIZE; y++) {
           const wy = worldY0 + y;
@@ -156,6 +165,25 @@ export class World {
       }
     }
 
+    // Tree placement — only where the full canopy fits inside this chunk
+    for (let x = 1; x < CHUNK_SIZE - 1; x++) {
+      for (let z = 1; z < CHUNK_SIZE - 1; z++) {
+        const localSurfaceY = surfaceMap[x + z * CHUNK_SIZE];
+        if (localSurfaceY === 255) continue;              // surface not in this chunk
+        if (localSurfaceY + 5 >= CHUNK_SIZE) continue;    // tree top would exceed chunk ceiling
+
+        const wx = worldX0 + x;
+        const wz = worldZ0 + z;
+        const groundY = worldY0 + localSurfaceY;
+
+        // Must be grass and pass the deterministic hash (~1 tree per chunk)
+        if (chunk.getBlock(x, localSurfaceY, z) !== BlockType.GRASS) continue;
+        if (this.treeHash(wx, wz) >= 8) continue; // 8/1000 ≈ 1 tree per chunk
+
+        this.placeTree(chunk, wx, groundY, wz);
+      }
+    }
+
     chunk.computeFaceSolidity((wx, wy, wz) => this.getBlock(wx, wy, wz));
     chunk.dirty = false;
     return chunk;
@@ -166,6 +194,57 @@ export class World {
     let h = (x * 374761393 + y * 668265263 + z * 1274126177) | 0;
     h = ((h ^ (h >> 13)) * 1103515245) | 0;
     return ((h ^ (h >> 16)) & 0x7fffffff) % 1000;
+  }
+
+  /** Deterministic hash for tree placement at (x, z). */
+  private treeHash(x: number, z: number): number {
+    let h = (x * 374761393 + z * 668265263) | 0;
+    h = ((h ^ (h >> 13)) * 1103515245) | 0;
+    return ((h ^ (h >> 16)) & 0x7fffffff) % 1000;
+  }
+
+  /** Place a small oak tree at world position (tx, groundY, tz).
+   *  All blocks must fit within the given chunk — caller must verify. */
+  private placeTree(chunk: Chunk, tx: number, groundY: number, tz: number): void {
+    const worldX0 = chunk.cx * CHUNK_SIZE;
+    const worldY0 = chunk.cy * CHUNK_SIZE;
+    const worldZ0 = chunk.cz * CHUNK_SIZE;
+    const toLocal = (w: number, base: number) => ((w % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+
+    const lx = toLocal(tx, worldX0);
+    const lz = toLocal(tz, worldZ0);
+    const trunkBase = toLocal(groundY + 1, worldY0); // first log block above grass
+    const trunkTop = trunkBase + 3;                    // 4-block-tall trunk (indices base .. base+3)
+
+    // Trunk
+    for (let y = trunkBase; y <= trunkTop; y++) {
+      chunk.setBlock(lx, y, lz, BlockType.OAK_LOG);
+    }
+
+    // ── Canopy (3 layers around / above the trunk top) ──
+
+    // Layer 1 — trunk-top minus 1: plus-shaped leaves (N/S/E/W)
+    const ly = trunkTop - 1;
+    chunk.setBlock(lx - 1, ly, lz, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx + 1, ly, lz, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx, ly, lz - 1, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx, ly, lz + 1, BlockType.OAK_LEAVES);
+
+    // Layer 2 — at trunk top: 3×3 ring (8 leaves around the log centre)
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        if (dx === 0 && dz === 0) continue; // centre is trunk
+        chunk.setBlock(lx + dx, trunkTop, lz + dz, BlockType.OAK_LEAVES);
+      }
+    }
+
+    // Layer 3 — one above trunk top: plus-shaped + centre cap
+    const topY = trunkTop + 1;
+    chunk.setBlock(lx, topY, lz, BlockType.OAK_LEAVES);          // centre
+    chunk.setBlock(lx - 1, topY, lz, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx + 1, topY, lz, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx, topY, lz - 1, BlockType.OAK_LEAVES);
+    chunk.setBlock(lx, topY, lz + 1, BlockType.OAK_LEAVES);
   }
 
   private rebuildChunk(chunk: Chunk): void {
