@@ -29,8 +29,9 @@ export interface BlockData {
   name: string;
   solid: boolean;
   transparent: boolean;
-  hardness: number;           // hits to break (1 = instant, -1 = unbreakable)
-  texture: string;            // single texture for simple blocks
+  cutout?: boolean;            // if true, use alpha-tested rendering (pixels fully opaque or fully transparent)
+  hardness: number;            // hits to break (1 = instant, -1 = unbreakable)
+  texture: string;             // single texture for simple blocks
   faceTextures?: BlockFaceTextures; // per-face textures override
 }
 
@@ -52,7 +53,7 @@ export const BLOCK_DATA: Record<number, BlockData> = {
   [BlockType.IRON_ORE]:    { name: 'Iron Ore',     solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/iron_ore.png' },
   [BlockType.GOLD_ORE]:    { name: 'Gold Ore',     solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/gold_ore.png' },
   [BlockType.DIAMOND_ORE]: { name: 'Diamond Ore',  solid: true,  transparent: false, hardness: 5,  texture: '/assets/textures/block/diamond_ore.png' },
-  [BlockType.OAK_LEAVES]:  { name: 'Oak Leaves',  solid: true,  transparent: true,  hardness: 0.5,texture: '/assets/textures/block/oak_leaves.png' },
+  [BlockType.OAK_LEAVES]:  { name: 'Oak Leaves',  solid: true,  transparent: true,  cutout: true, hardness: 0.5,texture: '/assets/textures/block/oak_leaves.png' },
 };
 
 /** Textures that should be tinted a specific color during atlas packing.

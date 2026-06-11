@@ -16,6 +16,7 @@ export class Chunk {
   // Shared materials — reused across all chunks to avoid per-chunk material creation
   static opaqueMaterial: THREE.MeshLambertMaterial;
   static transparentMaterial: THREE.MeshLambertMaterial;
+  static alphaTestMaterial: THREE.MeshLambertMaterial;
 
   static initMaterials(atlas: TextureAtlas): void {
     const tex = atlas.getTexture();
@@ -25,6 +26,16 @@ export class Chunk {
       transparent: false,
       alphaTest: 0.1,
     });
+    // Cutout (alpha-tested): pixels are either fully opaque or fully discarded.
+    // Used for leaves, where the texture alpha channel defines the shape.
+    Chunk.alphaTestMaterial = new THREE.MeshLambertMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      transparent: false,
+      alphaTest: 0.5,
+      depthWrite: true,
+    });
+    // Semi-transparent: uniform opacity for blocks like glass.
     Chunk.transparentMaterial = new THREE.MeshLambertMaterial({
       map: tex,
       side: THREE.DoubleSide,
@@ -145,6 +156,8 @@ export class Chunk {
     if (neighbor === BlockType.AIR) return true;
     const bd = BLOCK_DATA[block];
     const nd = BLOCK_DATA[neighbor];
+    // Cutout (alpha-tested): faces against opaque solids would z-fight — hide them
+    if (bd.cutout) return block !== neighbor && nd.transparent;
     if (bd.transparent) return block !== neighbor;
     return nd.transparent;
   }
@@ -159,10 +172,14 @@ export class Chunk {
     const opaqueNorm: number[] = [];
     const opaqueUv: number[] = [];
     const opaqueIdx: number[] = [];
-    const transPos: number[] = [];
-    const transNorm: number[] = [];
-    const transUv: number[] = [];
-    const transIdx: number[] = [];
+    const cutoutPos: number[] = [];
+    const cutoutNorm: number[] = [];
+    const cutoutUv: number[] = [];
+    const cutoutIdx: number[] = [];
+    const semiTransPos: number[] = [];
+    const semiTransNorm: number[] = [];
+    const semiTransUv: number[] = [];
+    const semiTransIdx: number[] = [];
 
     const worldX0 = this.cx * CHUNK_SIZE;
     const worldY0 = this.cy * CHUNK_SIZE;
@@ -192,15 +209,20 @@ export class Chunk {
           const block = this.blocks[this.idx(x, y, z)];
           if (block === BlockType.AIR) continue;
 
-          const isTransparent = BLOCK_DATA[block].transparent;
+          const data = BLOCK_DATA[block];
+          const isTransparent = data.transparent;
           const wx = worldX0 + x;
           const wy = worldY0 + y;
           const wz = worldZ0 + z;
 
-          const positions = isTransparent ? transPos : opaquePos;
-          const normals = isTransparent ? transNorm : opaqueNorm;
-          const uvs = isTransparent ? transUv : opaqueUv;
-          const indices = isTransparent ? transIdx : opaqueIdx;
+          let positions: number[], normals: number[], uvs: number[], indices: number[];
+          if (!isTransparent) {
+            positions = opaquePos; normals = opaqueNorm; uvs = opaqueUv; indices = opaqueIdx;
+          } else if (data.cutout) {
+            positions = cutoutPos; normals = cutoutNorm; uvs = cutoutUv; indices = cutoutIdx;
+          } else {
+            positions = semiTransPos; normals = semiTransNorm; uvs = semiTransUv; indices = semiTransIdx;
+          }
 
           for (const face of faceDefs) {
             const nx = wx + face.dir[0];
@@ -241,14 +263,17 @@ export class Chunk {
       }
     }
 
-    this.buildGroup(opaquePos, opaqueNorm, opaqueUv, opaqueIdx, atlas, false, 0);
-    this.buildGroup(transPos, transNorm, transUv, transIdx, atlas, true, 1);
+    this.buildGroup(opaquePos, opaqueNorm, opaqueUv, opaqueIdx, atlas, Chunk.opaqueMaterial, 0);
+    // Cutout after opaque so depth buffer is populated (solid leaf pixels occlude)
+    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 1);
+    // Semi-transparent last — no depth write, must render after everything else
+    this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 2);
     this.dirty = false;
   }
 
   private buildGroup(
     pos: number[], norm: number[], uv: number[], idx: number[],
-    atlas: TextureAtlas, transparent: boolean, renderOrder: number
+    atlas: TextureAtlas, material: THREE.MeshLambertMaterial, renderOrder: number
   ): void {
     if (pos.length === 0) return;
 
@@ -257,8 +282,6 @@ export class Chunk {
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geometry.setIndex(idx);
-
-    const material = transparent ? Chunk.transparentMaterial : Chunk.opaqueMaterial;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(

@@ -17,9 +17,38 @@ export class TextureAtlas {
     this.loader = loader;
   }
 
+  /** Multiply-blend a tint colour onto a cell while preserving the source
+   *  image's alpha channel.  Creates an alpha-masked tint overlay on a temp
+   *  canvas so that fully-transparent pixels stay transparent.
+   *
+   *  Without the mask, the Canvas 2D multiply formula fills transparent
+   *  destination pixels with the source colour — leaf holes become solid. */
+  private static applyTint(
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    x: number, y: number, size: number, tint: string,
+  ): void {
+    // 1. Build an alpha-masked tint overlay on a temp canvas
+    const overlay = document.createElement('canvas');
+    overlay.width = size;
+    overlay.height = size;
+    const octx = overlay.getContext('2d')!;
+    octx.fillStyle = tint;
+    octx.fillRect(0, 0, size, size);
+    // destination-in: keep tint only where the image has non-zero alpha
+    octx.globalCompositeOperation = 'destination-in';
+    octx.drawImage(img, 0, 0, size, size);
+
+    // 2. Multiply-blend the masked overlay onto the main canvas.
+    //    Where overlay α = 0 (leaf holes), nothing is drawn → stays transparent.
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(overlay, x, y);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   /** Build atlas from a list of texture paths. Calls onLoad when done.
-   *  @param tints Optional map from texture path to CSS color — applies a
-   *               multiply overlay to colorize grayscale textures (e.g. leaves). */
+   *  @param tints Optional map from texture path to CSS colour — applies a
+   *               multiply overlay to colorise grayscale textures (e.g. leaves). */
   build(paths: string[], onLoad: () => void, tints?: Map<string, string>): void {
     // Deduplicate and assign grid positions
     const unique = [...new Set(paths.filter(Boolean))];
@@ -52,14 +81,13 @@ export class TextureAtlas {
       const pos = this.grid.get(path)!;
       const img = new Image();
       img.onload = () => {
-        ctx.drawImage(img, pos.col * this.tilePx, pos.row * this.tilePx, this.tilePx, this.tilePx);
+        const sx = pos.col * this.tilePx;
+        const sy = pos.row * this.tilePx;
+        ctx.drawImage(img, sx, sy, this.tilePx, this.tilePx);
 
-        // Apply color tint for grayscale textures (e.g. leaves → green)
+        // Apply colour tint while preserving the texture's alpha channel
         if (tints?.has(path)) {
-          ctx.globalCompositeOperation = 'multiply';
-          ctx.fillStyle = tints.get(path)!;
-          ctx.fillRect(pos.col * this.tilePx, pos.row * this.tilePx, this.tilePx, this.tilePx);
-          ctx.globalCompositeOperation = 'source-over';
+          TextureAtlas.applyTint(ctx, img, sx, sy, this.tilePx, tints.get(path)!);
         }
 
         loaded++;
@@ -80,6 +108,7 @@ export class TextureAtlas {
           this.texture.magFilter = THREE.NearestFilter;
           this.texture.minFilter = THREE.NearestFilter;
           this.texture.generateMipmaps = false;
+          this.texture.colorSpace = THREE.SRGBColorSpace;
           this.ready = true;
           onLoad();
         }
@@ -141,10 +170,7 @@ export class TextureAtlas {
       ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
       if (tint) {
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.fillStyle = tint;
-        ctx.fillRect(0, 0, SIZE, SIZE);
-        ctx.globalCompositeOperation = 'source-over';
+        TextureAtlas.applyTint(ctx, img, 0, 0, SIZE, tint);
       }
 
       tex.needsUpdate = true;
