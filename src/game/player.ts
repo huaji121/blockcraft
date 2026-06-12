@@ -711,8 +711,16 @@ export class Player extends Entity {
       disposeOld.forEach((m: THREE.Material) => m.dispose());
     }
 
+    // Transparent: true forces the hand into the transparent render queue,
+    // which sorts back-to-front by distance.  At z=-0.7 the hand is the
+    // closest object → it draws last, on top of glass and everything else.
     const makeMat = (map: THREE.Texture | null) =>
-      new THREE.MeshLambertMaterial({ map, color: 0xffffff, depthTest: false, ...matOpts });
+      new THREE.MeshLambertMaterial({
+        map, color: 0xffffff,
+        transparent: true, opacity: 0.999,
+        depthTest: false, depthWrite: false,
+        ...matOpts,
+      });
 
     this.handMesh.material = [
       makeMat(sideMap), makeMat(sideMap),   // +X, -X
