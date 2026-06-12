@@ -590,6 +590,7 @@ export class Player extends Entity {
           }
         } else {
           // New block — start mining
+          this.triggerSwing();
           this.miningPos = { x: bx, y: by, z: bz };
           this.miningProgress = 0;
         }
@@ -642,8 +643,7 @@ export class Player extends Entity {
 
   /** Trigger the hand swing animation (called on attack / block break / place). */
   private triggerSwing(): void {
-    // Start just above 0 so updateHandMesh picks it up and animates
-    if (this.swingProgress <= 0) this.swingProgress = 0.01;
+    this.swingProgress = 0.01;
   }
 
   private updateHandMesh(dt: number): void {
@@ -675,7 +675,14 @@ export class Player extends Entity {
     // ── Swing animation ──
     if (this.swingProgress > 0) {
       this.swingProgress += this.SWING_SPEED * dt;
-      if (this.swingProgress >= 1) this.swingProgress = 0;
+      if (this.swingProgress >= 1) {
+        // Cycle the swing while actively mining
+        if (this.miningPos) {
+          this.swingProgress = 0.01;
+        } else {
+          this.swingProgress = 0;
+        }
+      }
     }
     // Sine arc: peaks at progress=0.5, returns to 0 at progress=1
     const swingAngle = Math.sin(this.swingProgress * Math.PI) * 0.6;
