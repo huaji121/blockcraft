@@ -25,6 +25,8 @@ export abstract class Item {
   abstract getBlockType(): BlockType | null;
   abstract getTexture(): string;
   abstract getFaceTexture(face: 'top' | 'bottom' | 'side'): string;
+  /** Side overlay texture path, or null (e.g. grass tufts on dirt). */
+  getSideOverlay(): string | null { return null; }
 
   /** Called when the player right-clicks a block. Returns true if the item should be consumed. */
   interactWithBlock(_ctx: InteractContext): boolean {
@@ -45,6 +47,9 @@ export class BlockItem extends Item {
   getTexture(): string { return BLOCK_DATA[this.blockType].texture; }
   getFaceTexture(face: 'top' | 'bottom' | 'side'): string {
     return getBlockFaceTexture(this.blockType, face);
+  }
+  override getSideOverlay(): string | null {
+    return BLOCK_DATA[this.blockType].faceTextures?.sideOverlay ?? null;
   }
 
   override interactWithBlock(ctx: InteractContext): boolean {
