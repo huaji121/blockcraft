@@ -3,6 +3,7 @@ import { BlockType } from './blocks';
 export enum BiomeType {
   PLAINS = 0,
   DESERT = 1,
+  FLAT_PLAINS = 2,
 }
 
 export interface BiomeData {
@@ -19,6 +20,8 @@ export interface BiomeData {
   grassTint: [number, number, number];
   /** Probability threshold for tree placement (0 = no trees). */
   treeDensity: number;
+  /** Pulls terrain height toward the mean (0 = normal, 1 = completely flat). */
+  terrainFlatness?: number;
 }
 
 export const BIOME_DATA: Record<BiomeType, BiomeData> = {
@@ -40,11 +43,22 @@ export const BIOME_DATA: Record<BiomeType, BiomeData> = {
     grassTint: [1.0, 0.82, 0.5],    // warm — makes grass dry / yellowish
     treeDensity: 0,                  // no trees in desert
   },
+  [BiomeType.FLAT_PLAINS]: {
+    name: 'Flat Plains',
+    surfaceBlock: BlockType.GRASS,
+    subsurfaceBlock: BlockType.DIRT,
+    subsurfaceDepth: 3,
+    leafTint: [1.0, 1.0, 1.0],
+    grassTint: [1.0, 1.0, 1.0],
+    treeDensity: 0.002,              // ~1 tree per 4 chunks (25% of normal)
+    terrainFlatness: 0.7,            // pull height 70% toward the mean
+  },
 };
 
 /** Look up a biome from a temperature value (roughly -1 … +1).
- *  Sharp cutoff: temperature > 0.2 → desert, otherwise plains. */
+ *  Three bands: cool ≤ 0 → flat plains, 0 … 0.2 → normal plains, > 0.2 → desert. */
 export function getBiomeFromTemperature(temperature: number): BiomeType {
   if (temperature > 0.2) return BiomeType.DESERT;
-  return BiomeType.PLAINS;
+  if (temperature > 0.0) return BiomeType.PLAINS;
+  return BiomeType.FLAT_PLAINS;
 }

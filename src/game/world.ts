@@ -150,10 +150,19 @@ export class World {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX0 + x;
         const wz = worldZ0 + z;
-        const surfaceHeight = this.noise.getHeight(wx, wz);
-        const localSurfaceY = surfaceHeight - worldY0;
+        let surfaceHeight = this.noise.getHeight(wx, wz);
         const biome = this.getBiomeAt(wx, wz);
         const biomeData = BIOME_DATA[biome];
+
+        // Biome-specific terrain flattening
+        if (biomeData.terrainFlatness) {
+          const meanHeight = 55; // midpoint of the 40-70 range
+          surfaceHeight = Math.floor(
+            surfaceHeight + (meanHeight - surfaceHeight) * biomeData.terrainFlatness,
+          );
+        }
+
+        const localSurfaceY = surfaceHeight - worldY0;
 
         // Record surface position for tree placement (only if surface is inside this chunk)
         if (localSurfaceY >= 0 && localSurfaceY < CHUNK_SIZE) {
