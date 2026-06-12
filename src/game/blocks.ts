@@ -23,6 +23,7 @@ export interface BlockFaceTextures {
   top: string;
   bottom: string;
   side: string;
+  sideOverlay?: string;  // composited on top of 'side' for grass etc.
 }
 
 export interface BlockData {
@@ -30,6 +31,7 @@ export interface BlockData {
   solid: boolean;
   transparent: boolean;
   cutout?: boolean;            // if true, use alpha-tested rendering (pixels fully opaque or fully transparent)
+  needsBiomeTint?: boolean;    // if true, vertex colours are set from the biome's grassTint
   hardness: number;            // hits to break (1 = instant, -1 = unbreakable)
   texture: string;             // single texture for simple blocks
   faceTextures?: BlockFaceTextures; // per-face textures override
@@ -38,7 +40,7 @@ export interface BlockData {
 export const BLOCK_DATA: Record<number, BlockData> = {
   [BlockType.AIR]:         { name: 'Air',          solid: false, transparent: true,  hardness: 0,  texture: '' },
   [BlockType.DIRT]:        { name: 'Dirt',         solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/dirt.png' },
-  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: '/assets/textures/block/grass_block_side.png' } },
+  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, needsBiomeTint: true, hardness: 1,  texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: '/assets/textures/block/dirt.png', sideOverlay: '/assets/textures/block/grass_block_side_overlay.png' } },
   [BlockType.STONE]:       { name: 'Stone',        solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/stone.png' },
   [BlockType.COBBLESTONE]: { name: 'Cobblestone',  solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/cobblestone.png' },
   [BlockType.OAK_PLANKS]:  { name: 'Oak Planks',   solid: true,  transparent: false, hardness: 3,  texture: '/assets/textures/block/oak_planks.png' },
@@ -60,6 +62,8 @@ export const BLOCK_DATA: Record<number, BlockData> = {
  *  Used for grayscale textures (like leaves) that need biome coloring. */
 export const BLOCK_TEXTURE_TINTS: Record<string, string> = {
   '/assets/textures/block/oak_leaves.png': '#559944',
+  '/assets/textures/block/grass_block_top.png': '#7ba34a',
+  '/assets/textures/block/grass_block_side_overlay.png': '#7ba34a',
 };
 
 /** Get the texture path for a specific face of a block */

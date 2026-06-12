@@ -13,12 +13,11 @@ export interface BiomeData {
   subsurfaceBlock: BlockType;
   /** Number of blocks between surface and stone (the dirt/sand layer thickness). */
   subsurfaceDepth: number;
-  /** RGB vertex-colour multiplier for leaf blocks, each channel in [0, 1].
-   *  Multiplied with the atlas-tinted leaf texture at render time via
-   *  Three.js vertexColors.  White [1,1,1] preserves the atlas tint. */
+  /** RGB vertex-colour multiplier for leaf blocks, each channel in [0, 1]. */
   leafTint: [number, number, number];
-  /** Probability threshold for tree placement (0 = no trees).
-   *  Compared against treeHash() result / 1000. */
+  /** RGB vertex-colour multiplier for grass blocks. */
+  grassTint: [number, number, number];
+  /** Probability threshold for tree placement (0 = no trees). */
   treeDensity: number;
 }
 
@@ -29,6 +28,7 @@ export const BIOME_DATA: Record<BiomeType, BiomeData> = {
     subsurfaceBlock: BlockType.DIRT,
     subsurfaceDepth: 3,
     leafTint: [1.0, 1.0, 1.0],      // neutral — atlas green passes through
+    grassTint: [1.0, 1.0, 1.0],     // neutral — atlas green preserved
     treeDensity: 0.008,              // ~1 tree per chunk (8/1000)
   },
   [BiomeType.DESERT]: {
@@ -37,6 +37,7 @@ export const BIOME_DATA: Record<BiomeType, BiomeData> = {
     subsurfaceBlock: BlockType.SAND,
     subsurfaceDepth: 3,
     leafTint: [1.0, 0.85, 0.55],    // warm — makes leaves olive / yellowish
+    grassTint: [1.0, 0.82, 0.5],    // warm — makes grass dry / yellowish
     treeDensity: 0,                  // no trees in desert
   },
 };

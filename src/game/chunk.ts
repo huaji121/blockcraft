@@ -16,8 +16,10 @@ export class Chunk {
 
   // Shared materials — reused across all chunks to avoid per-chunk material creation
   static opaqueMaterial: THREE.MeshLambertMaterial;
+  static biomeOpaqueMaterial: THREE.MeshLambertMaterial;
   static transparentMaterial: THREE.MeshLambertMaterial;
   static alphaTestMaterial: THREE.MeshLambertMaterial;
+  static overlayMaterial: THREE.MeshLambertMaterial;
 
   static initMaterials(atlas: TextureAtlas): void {
     const tex = atlas.getTexture();
@@ -26,6 +28,14 @@ export class Chunk {
       side: THREE.FrontSide,
       transparent: false,
       alphaTest: 0.1,
+    });
+    // Biome-tinted opaque blocks (grass top etc.) — vertexColors for per-biome tint
+    Chunk.biomeOpaqueMaterial = new THREE.MeshLambertMaterial({
+      map: tex,
+      side: THREE.FrontSide,
+      transparent: false,
+      alphaTest: 0.1,
+      vertexColors: true,
     });
     // Cutout (alpha-tested): pixels are either fully opaque or fully discarded.
     // Used for leaves, where the texture alpha channel defines the shape.
@@ -46,6 +56,20 @@ export class Chunk {
       opacity: 0.5,
       alphaTest: 0.1,
       depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    // Overlay: for compositing a textured overlay on top of a base face
+    // (e.g. grass side = dirt base + tinted grass overlay).
+    // Polygon offset pushes the overlay slightly forward to avoid z-fighting
+    // with the base face rendered at the exact same position.
+    Chunk.overlayMaterial = new THREE.MeshLambertMaterial({
+      map: tex,
+      side: THREE.FrontSide,
+      transparent: false,
+      alphaTest: 0.1,
+      vertexColors: true,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
@@ -176,6 +200,11 @@ export class Chunk {
     const opaqueNorm: number[] = [];
     const opaqueUv: number[] = [];
     const opaqueIdx: number[] = [];
+    const biomeOpaquePos: number[] = [];
+    const biomeOpaqueNorm: number[] = [];
+    const biomeOpaqueUv: number[] = [];
+    const biomeOpaqueIdx: number[] = [];
+    const biomeOpaqueColor: number[] = [];
     const cutoutPos: number[] = [];
     const cutoutNorm: number[] = [];
     const cutoutUv: number[] = [];
@@ -185,6 +214,11 @@ export class Chunk {
     const semiTransUv: number[] = [];
     const semiTransIdx: number[] = [];
     const cutoutColor: number[] = [];
+    const overlayPos: number[] = [];
+    const overlayNorm: number[] = [];
+    const overlayUv: number[] = [];
+    const overlayIdx: number[] = [];
+    const overlayColor: number[] = [];
 
     const worldX0 = this.cx * CHUNK_SIZE;
     const worldY0 = this.cy * CHUNK_SIZE;
@@ -222,13 +256,19 @@ export class Chunk {
 
           let positions: number[], normals: number[], uvs: number[], indices: number[];
           let colors: number[] | null = null;
-          let leafTint: [number, number, number] | null = null;
+          let biomeTint: [number, number, number] | null = null;
           if (!isTransparent) {
-            positions = opaquePos; normals = opaqueNorm; uvs = opaqueUv; indices = opaqueIdx;
+            if (data.needsBiomeTint && getBiome) {
+              positions = biomeOpaquePos; normals = biomeOpaqueNorm; uvs = biomeOpaqueUv; indices = biomeOpaqueIdx;
+              colors = biomeOpaqueColor;
+              biomeTint = BIOME_DATA[getBiome(wx, wz)].grassTint;
+            } else {
+              positions = opaquePos; normals = opaqueNorm; uvs = opaqueUv; indices = opaqueIdx;
+            }
           } else if (data.cutout) {
             positions = cutoutPos; normals = cutoutNorm; uvs = cutoutUv; indices = cutoutIdx;
             colors = cutoutColor;
-            if (getBiome) leafTint = BIOME_DATA[getBiome(wx, wz)].leafTint;
+            if (getBiome) biomeTint = BIOME_DATA[getBiome(wx, wz)].leafTint;
           } else {
             positions = semiTransPos; normals = semiTransNorm; uvs = semiTransUv; indices = semiTransIdx;
           }
@@ -261,8 +301,12 @@ export class Chunk {
                 uvRect.u0 + fuvs[i][0] * (uvRect.u1 - uvRect.u0),
                 uvRect.v0 + fuvs[i][1] * (uvRect.v1 - uvRect.v0)
               );
-              if (colors && leafTint) {
-                colors.push(leafTint[0], leafTint[1], leafTint[2]);
+              if (colors) {
+                colors.push(
+                  biomeTint ? biomeTint[0] : 1,
+                  biomeTint ? biomeTint[1] : 1,
+                  biomeTint ? biomeTint[2] : 1,
+                );
               }
             }
 
@@ -270,16 +314,53 @@ export class Chunk {
               baseIndex, baseIndex + 1, baseIndex + 2,
               baseIndex, baseIndex + 2, baseIndex + 3
             );
+
+            // ── Side overlay (e.g. grass tufts on dirt) ──
+            // Emit a second face with the overlay texture, slightly offset
+            // in the normal direction to composit on top of the base face.
+            const sideOverlayPath = data.faceTextures?.sideOverlay;
+            if (sideOverlayPath && face.dir[1] === 0) {
+              const ovUV = atlas.getUV(sideOverlayPath);
+              if (ovUV) {
+                const ovBase = overlayPos.length / 3;
+                for (let i = 0; i < 4; i++) {
+                  const corner = face.corners[i];
+                  overlayPos.push(
+                    (x + corner[0]) * BLOCK_SIZE + face.dir[0] * 0.001,
+                    (y + corner[1]) * BLOCK_SIZE + face.dir[1] * 0.001,
+                    (z + corner[2]) * BLOCK_SIZE + face.dir[2] * 0.001,
+                  );
+                  overlayNorm.push(face.dir[0], face.dir[1], face.dir[2]);
+                  overlayUv.push(
+                    ovUV.u0 + fuvs[i][0] * (ovUV.u1 - ovUV.u0),
+                    ovUV.v0 + fuvs[i][1] * (ovUV.v1 - ovUV.v0),
+                  );
+                  overlayColor.push(
+                    biomeTint ? biomeTint[0] : 1,
+                    biomeTint ? biomeTint[1] : 1,
+                    biomeTint ? biomeTint[2] : 1,
+                  );
+                }
+                overlayIdx.push(
+                  ovBase, ovBase + 1, ovBase + 2,
+                  ovBase, ovBase + 2, ovBase + 3,
+                );
+              }
+            }
           }
         }
       }
     }
 
     this.buildGroup(opaquePos, opaqueNorm, opaqueUv, opaqueIdx, atlas, Chunk.opaqueMaterial, 0);
+    // Biome-tinted opaque (grass faces) — vertex-coloured per biome
+    this.buildGroup(biomeOpaquePos, biomeOpaqueNorm, biomeOpaqueUv, biomeOpaqueIdx, atlas, Chunk.biomeOpaqueMaterial, 1, biomeOpaqueColor);
+    // Overlay: grass side tufts — polygon-offset to composit on top of the base face
+    this.buildGroup(overlayPos, overlayNorm, overlayUv, overlayIdx, atlas, Chunk.overlayMaterial, 2, overlayColor);
     // Cutout after opaque so depth buffer is populated (solid leaf pixels occlude)
-    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 1, cutoutColor);
+    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 3, cutoutColor);
     // Semi-transparent last — no depth write, must render after everything else
-    this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 2);
+    this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 4);
     this.dirty = false;
   }
 

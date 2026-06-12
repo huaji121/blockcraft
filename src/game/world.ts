@@ -33,6 +33,7 @@ export class World {
         paths.add(data.faceTextures.top);
         paths.add(data.faceTextures.bottom);
         paths.add(data.faceTextures.side);
+        if (data.faceTextures.sideOverlay) paths.add(data.faceTextures.sideOverlay);
       }
     }
 
