@@ -65,7 +65,7 @@ export class GameEngine {
     const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8b7355, 0.3);
     this.scene.add(hemiLight);
 
-    this.world = new World(this.scene);
+    this.world = new World(this.scene, (Date.now() % 0x7fffffff) || 42);
     this.particles = new ParticleManager(this.scene);
     this.entityManager = new EntityManager(this.scene);
     this.entityManager.setParticleManager(this.particles);
