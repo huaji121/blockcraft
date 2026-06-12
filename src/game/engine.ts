@@ -71,6 +71,9 @@ export class GameEngine {
     this.entityManager.setParticleManager(this.particles);
     this.entityManager.setGetBlock((x, y, z) => this.world.getBlock(x, y, z));
     this.player = new Player(this.scene, this.camera, this.world);
+    // Spawn on the surface instead of a fixed Y
+    const spawnY = this.world.getSurfaceHeight(0, 0);
+    this.player.position.y = spawnY + 1;
     this.entityManager.setPlayerRef(this.player);
     this.player.setEntityManager(this.entityManager);
 

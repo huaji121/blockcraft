@@ -4,7 +4,7 @@ import { TerrainNoise } from './noise';
 import { BlockType, BLOCK_DATA, ALL_BLOCKS, BLOCK_TEXTURE_TINTS, BLOCK_COMPOSITES } from './blocks';
 import { CHUNK_SIZE, RENDER_DISTANCE, RENDER_DISTANCE_Y, UNLOAD_HYSTERESIS, CHUNKS_PER_FRAME } from './constants';
 import { TextureAtlas } from './atlas';
-import { BiomeType, BIOME_DATA, getBiomeFromTemperature } from './biome';
+import { BiomeType, BIOME_DATA, getBiome } from './biome';
 
 export class World {
   private chunks: Map<string, Chunk> = new Map();
@@ -84,7 +84,22 @@ export class World {
   /** Get the biome at a world (x, z) column. */
   getBiomeAt(wx: number, wz: number): BiomeType {
     const temperature = this.noise.getTemperature(wx, wz);
-    return getBiomeFromTemperature(temperature);
+    const ridgeness = this.noise.getRidgeness(wx, wz);
+    return getBiome(temperature, ridgeness);
+  }
+
+  /** Compute the surface height at (wx, wz) accounting for biome scaling. */
+  getSurfaceHeight(wx: number, wz: number): number {
+    const biome = this.getBiomeAt(wx, wz);
+    const biomeData = BIOME_DATA[biome];
+    const raw = this.noise.getRawHeight(wx, wz);
+    const range = biomeData.terrainRange ?? 30;
+    const power = biomeData.terrainPower ?? 1;
+    let h = Math.floor(40 + Math.pow(raw, power) * range);
+    if (biomeData.terrainFlatness) {
+      h = Math.floor(h + (55 - h) * biomeData.terrainFlatness);
+    }
+    return h;
   }
 
   private chunkKey(cx: number, cy: number, cz: number): string {
@@ -150,13 +165,18 @@ export class World {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         const wx = worldX0 + x;
         const wz = worldZ0 + z;
-        let surfaceHeight = this.noise.getHeight(wx, wz);
         const biome = this.getBiomeAt(wx, wz);
         const biomeData = BIOME_DATA[biome];
 
+        // Terrain height — biome-specific range and distribution
+        const raw = this.noise.getRawHeight(wx, wz);
+        const terrainRange = biomeData.terrainRange ?? 30;
+        const terrainPower = biomeData.terrainPower ?? 1;
+        let surfaceHeight = Math.floor(40 + Math.pow(raw, terrainPower) * terrainRange);
+
         // Biome-specific terrain flattening
         if (biomeData.terrainFlatness) {
-          const meanHeight = 55; // midpoint of the 40-70 range
+          const meanHeight = 55;
           surfaceHeight = Math.floor(
             surfaceHeight + (meanHeight - surfaceHeight) * biomeData.terrainFlatness,
           );
@@ -185,7 +205,18 @@ export class World {
           } else if (wy < surfaceHeight) {
             chunk.setBlock(x, y, z, biomeData.subsurfaceBlock);
           } else if (wy === surfaceHeight) {
-            chunk.setBlock(x, y, z, biomeData.surfaceBlock);
+            // Y-dependent surface for mountains
+            if (biome === BiomeType.MOUNTAIN) {
+              if (wy > 100) {
+                chunk.setBlock(x, y, z, BlockType.SNOW);
+              } else if (wy > 75) {
+                chunk.setBlock(x, y, z, BlockType.STONE);
+              } else {
+                chunk.setBlock(x, y, z, BlockType.GRASS);
+              }
+            } else {
+              chunk.setBlock(x, y, z, biomeData.surfaceBlock);
+            }
           }
         }
       }

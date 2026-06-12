@@ -1,6 +1,6 @@
 export const CHUNK_SIZE = 16;
 export const RENDER_DISTANCE = 8;
-export const RENDER_DISTANCE_Y = 3;
+export const RENDER_DISTANCE_Y = 6;
 export const UNLOAD_HYSTERESIS = 2; // buffer beyond render distance before unloading
 export const CHUNKS_PER_FRAME = 1;
 export const MESH_UPLOADS_PER_FRAME = 2;
