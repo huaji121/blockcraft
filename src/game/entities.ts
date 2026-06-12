@@ -234,7 +234,10 @@ export class DroppedItem extends Entity {
   }
 
   private static makeFaceMat(texPath: string, transparent: boolean): THREE.MeshLambertMaterial {
-    const tex = DroppedItem.getTex(texPath);
+    return DroppedItem.makeFaceMatRaw(DroppedItem.getTex(texPath), transparent);
+  }
+
+  private static makeFaceMatRaw(tex: THREE.Texture | null, transparent: boolean): THREE.MeshLambertMaterial {
     return new THREE.MeshLambertMaterial({
       map: tex,
       color: 0xffffff,
@@ -260,13 +263,28 @@ export class DroppedItem extends Entity {
       const side = item.getFaceTexture('side');
       const top = item.getFaceTexture('top');
       const bottom = item.getFaceTexture('bottom');
+      const sideOverlay = item.getSideOverlay();
+
+      // Composite side texture for grass-like blocks
+      let sideMap: THREE.Texture | null = DroppedItem.getTex(side);
+      if (sideOverlay) {
+        const compositeKey = `__composite_drop:${side}|${sideOverlay}`;
+        let tex = DroppedItem.texCache.get(compositeKey);
+        if (!tex) {
+          const overlayTint = BLOCK_TEXTURE_TINTS[sideOverlay];
+          tex = TextureAtlas.createCompositeTexture(side, sideOverlay, overlayTint);
+          DroppedItem.texCache.set(compositeKey, tex);
+        }
+        sideMap = tex;
+      }
+
       this.faceMaterials = [
-        DroppedItem.makeFaceMat(side, isTransparent),     // +X right
-        DroppedItem.makeFaceMat(side, isTransparent),     // -X left
-        DroppedItem.makeFaceMat(top, isTransparent),      // +Y top
-        DroppedItem.makeFaceMat(bottom, isTransparent),   // -Y bottom
-        DroppedItem.makeFaceMat(side, isTransparent),     // +Z front
-        DroppedItem.makeFaceMat(side, isTransparent),     // -Z back
+        DroppedItem.makeFaceMatRaw(sideMap, isTransparent),   // +X right
+        DroppedItem.makeFaceMatRaw(sideMap, isTransparent),   // -X left
+        DroppedItem.makeFaceMat(top, isTransparent),           // +Y top
+        DroppedItem.makeFaceMat(bottom, isTransparent),        // -Y bottom
+        DroppedItem.makeFaceMatRaw(sideMap, isTransparent),    // +Z front
+        DroppedItem.makeFaceMatRaw(sideMap, isTransparent),    // -Z back
       ];
     }
 
