@@ -34,6 +34,8 @@ export class Player extends Entity {
   private lastHandItemId: number = EMPTY_ITEM_ID;
   private handSwayX: number = 0;
   private handSwayY: number = 0;
+  private swingProgress: number = 0; // 0..1, 0 = idle, 1 = full swing
+  private readonly SWING_SPEED = 5;  // speed of swing animation (higher = faster)
 
   private world: World;
   private isPointerLocked: boolean = false;
@@ -536,6 +538,7 @@ export class Player extends Entity {
             -Math.cos(this.yaw)
           ).normalize();
           entityHit.entity.takeDamage(5, knockbackDir);
+          this.triggerSwing();
           this.lastBreakTime = now;
           this.miningPos = null;
           this.miningProgress = 0;
@@ -554,6 +557,7 @@ export class Player extends Entity {
           if (now - this.lastBreakTime > this.breakCooldown) {
             this.world.setBlock(bx, by, bz, BlockType.AIR);
             this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
+            this.triggerSwing();
             this.lastBreakTime = now;
           }
           this.miningPos = null;
@@ -579,6 +583,7 @@ export class Player extends Entity {
             // Break!
             this.world.setBlock(bx, by, bz, BlockType.AIR);
             this.onBlockBreak?.(bx, by, bz, blockHit.blockType);
+            this.triggerSwing();
             this.miningPos = null;
             this.miningProgress = 0;
             this.destroyOverlay.visible = false;
@@ -627,12 +632,19 @@ export class Player extends Entity {
 
       if (item.interactWithBlock(ctx)) {
         this.onBlockPlace?.(selectedItemId);
+        this.triggerSwing();
         this.lastPlaceTime = now;
       }
     }
   }
 
   // ── Held-item hand mesh ──
+
+  /** Trigger the hand swing animation (called on attack / block break / place). */
+  private triggerSwing(): void {
+    // Start just above 0 so updateHandMesh picks it up and animates
+    if (this.swingProgress <= 0) this.swingProgress = 0.01;
+  }
 
   private updateHandMesh(dt: number): void {
     const itemId = this.getSelectedItemId();
@@ -660,6 +672,14 @@ export class Player extends Entity {
     const bobY = Math.sin(this.bobPhase) * 0.02 * bobAmp;
     const bobX = Math.cos(this.bobPhase * 2) * 0.01 * bobAmp;
 
+    // ── Swing animation ──
+    if (this.swingProgress > 0) {
+      this.swingProgress += this.SWING_SPEED * dt;
+      if (this.swingProgress >= 1) this.swingProgress = 0;
+    }
+    // Sine arc: peaks at progress=0.5, returns to 0 at progress=1
+    const swingAngle = Math.sin(this.swingProgress * Math.PI) * 0.6;
+
     // Smooth interpolation to target position — eliminates jitter
     const targetX = 0.42 + this.handSwayX + bobX;
     const targetY = -0.32 + this.handSwayY + bobY;
@@ -668,7 +688,7 @@ export class Player extends Entity {
     this.handMesh.position.y += (targetY - this.handMesh.position.y) * smooth;
     this.handMesh.position.z += (-0.7 - this.handMesh.position.z) * smooth;
 
-    this.handMesh.rotation.set(0.3, -0.5, 0.1);
+    this.handMesh.rotation.set(0.3 + swingAngle, -0.5, 0.1);
   }
 
   private rebuildHandMaterials(itemId: number): void {
