@@ -129,6 +129,7 @@ export class Player extends Entity {
       Array.from({ length: 6 }, () => new THREE.MeshLambertMaterial({ color: 0xffffff })),
     );
     this.handMesh.visible = false;
+    this.handMesh.renderOrder = 999;
     this.camera.add(this.handMesh);
     // Camera must be in the scene graph for its children (hand mesh) to render
     this.scene.add(this.camera);
@@ -712,7 +713,7 @@ export class Player extends Entity {
     }
 
     const makeMat = (map: THREE.Texture | null) =>
-      new THREE.MeshLambertMaterial({ map, color: 0xffffff, ...matOpts });
+      new THREE.MeshLambertMaterial({ map, color: 0xffffff, depthTest: false, ...matOpts });
 
     this.handMesh.material = [
       makeMat(sideMap), makeMat(sideMap),   // +X, -X
