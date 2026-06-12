@@ -254,21 +254,25 @@ export class Chunk {
           const wy = worldY0 + y;
           const wz = worldZ0 + z;
 
+          // ── Block-level routing ──
+          // Grass blocks default to opaque (dirt side/bottom), with the
+          // top face and side overlay overridden per-face to biome-tinted arrays.
           let positions: number[], normals: number[], uvs: number[], indices: number[];
           let colors: number[] | null = null;
           let biomeTint: [number, number, number] | null = null;
           if (!isTransparent) {
-            if (data.needsBiomeTint && getBiome) {
-              positions = biomeOpaquePos; normals = biomeOpaqueNorm; uvs = biomeOpaqueUv; indices = biomeOpaqueIdx;
-              colors = biomeOpaqueColor;
-              biomeTint = BIOME_DATA[getBiome(wx, wz)].grassTint;
+            if (data.cutout) {
+              positions = cutoutPos; normals = cutoutNorm; uvs = cutoutUv; indices = cutoutIdx;
+              colors = cutoutColor;
+              if (getBiome) biomeTint = BIOME_DATA[getBiome(wx, wz)].leafTint;
             } else {
+              // Regular opaque (dirt, stone, grass bottom/side-base)
               positions = opaquePos; normals = opaqueNorm; uvs = opaqueUv; indices = opaqueIdx;
+              // Remember grassTint for per-face top-face / side-overlay override
+              if (data.needsBiomeTint && getBiome) {
+                biomeTint = BIOME_DATA[getBiome(wx, wz)].grassTint;
+              }
             }
-          } else if (data.cutout) {
-            positions = cutoutPos; normals = cutoutNorm; uvs = cutoutUv; indices = cutoutIdx;
-            colors = cutoutColor;
-            if (getBiome) biomeTint = BIOME_DATA[getBiome(wx, wz)].leafTint;
           } else {
             positions = semiTransPos; normals = semiTransNorm; uvs = semiTransUv; indices = semiTransIdx;
           }
@@ -285,32 +289,42 @@ export class Chunk {
             const uvRect = atlas.getUV(texPath);
             if (!uvRect) continue;
 
+            // ── Per-face override: grass top → biome-tinted arrays ──
+            let fPositions = positions, fNormals = normals, fUvs = uvs, fIndices = indices;
+            let fColors = colors, fTint = biomeTint;
+            if (data.needsBiomeTint && face.dir[1] === 1) {
+              // Top face of biome-tinted block — needs vertex colour
+              fPositions = biomeOpaquePos; fNormals = biomeOpaqueNorm;
+              fUvs = biomeOpaqueUv; fIndices = biomeOpaqueIdx;
+              fColors = biomeOpaqueColor;
+            }
+
             const faceKey = `${face.dir[0]},${face.dir[1]},${face.dir[2]}`;
             const fuvs = faceUvs[faceKey];
-            const baseIndex = positions.length / 3;
+            const baseIndex = fPositions.length / 3;
 
             for (let i = 0; i < 4; i++) {
               const corner = face.corners[i];
-              positions.push(
+              fPositions.push(
                 (x + corner[0]) * BLOCK_SIZE,
                 (y + corner[1]) * BLOCK_SIZE,
                 (z + corner[2]) * BLOCK_SIZE
               );
-              normals.push(face.dir[0], face.dir[1], face.dir[2]);
-              uvs.push(
+              fNormals.push(face.dir[0], face.dir[1], face.dir[2]);
+              fUvs.push(
                 uvRect.u0 + fuvs[i][0] * (uvRect.u1 - uvRect.u0),
                 uvRect.v0 + fuvs[i][1] * (uvRect.v1 - uvRect.v0)
               );
-              if (colors) {
-                colors.push(
-                  biomeTint ? biomeTint[0] : 1,
-                  biomeTint ? biomeTint[1] : 1,
-                  biomeTint ? biomeTint[2] : 1,
+              if (fColors) {
+                fColors.push(
+                  fTint ? fTint[0] : 1,
+                  fTint ? fTint[1] : 1,
+                  fTint ? fTint[2] : 1,
                 );
               }
             }
 
-            indices.push(
+            fIndices.push(
               baseIndex, baseIndex + 1, baseIndex + 2,
               baseIndex, baseIndex + 2, baseIndex + 3
             );
