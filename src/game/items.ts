@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BlockType, BLOCK_DATA, getBlockFaceTexture } from './blocks';
+import { BlockType, BLOCK_DATA, getBlockFaceTexture, BLOCK_COMPOSITES } from './blocks';
 
 /** Context passed to Item.interactWithBlock() for polymorphic right-click behavior */
 export interface InteractContext {
@@ -46,7 +46,14 @@ export class BlockItem extends Item {
   getBlockType(): BlockType { return this.blockType; }
   getTexture(): string { return BLOCK_DATA[this.blockType].texture; }
   getFaceTexture(face: 'top' | 'bottom' | 'side'): string {
-    return getBlockFaceTexture(this.blockType, face);
+    const tex = getBlockFaceTexture(this.blockType, face);
+    // Composite paths (e.g. __composite/grass_side) exist only in the atlas.
+    // For standalone use (inventory / dropped items) return the base texture.
+    if (tex.startsWith('__')) {
+      const def = BLOCK_COMPOSITES[tex];
+      if (def) return def.base;
+    }
+    return tex;
   }
   override getSideOverlay(): string | null {
     return BLOCK_DATA[this.blockType].faceTextures?.sideOverlay ?? null;

@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+/** Maps a virtual composite path to its two source textures.  The atlas
+ *  will draw the base image then the tinted overlay on top into one cell. */
+export type CompositeDef = { base: string; overlay: string };
+
 /**
  * Texture Atlas — packs all block textures into a single texture.
  * Each texture occupies a grid cell; UVs are computed from grid position.
@@ -47,11 +51,26 @@ export class TextureAtlas {
   }
 
   /** Build atlas from a list of texture paths. Calls onLoad when done.
-   *  @param tints Optional map from texture path to CSS colour — applies a
-   *               multiply overlay to colorise grayscale textures (e.g. leaves). */
-  build(paths: string[], onLoad: () => void, tints?: Map<string, string>): void {
+   *  @param tints      Map from texture path → CSS colour for multiply tinting
+   *  @param composites Map from virtual path → {base, overlay} — the composite
+   *                    cell is drawn after all source images have loaded. */
+  build(
+    paths: string[],
+    onLoad: () => void,
+    tints?: Map<string, string>,
+    composites?: Map<string, CompositeDef>,
+  ): void {
+    // Collect composite source paths so they're loaded as normal images
+    const compositeSources = new Set<string>();
+    if (composites) {
+      for (const [, def] of composites) {
+        compositeSources.add(def.base);
+        compositeSources.add(def.overlay);
+      }
+    }
+
     // Deduplicate and assign grid positions
-    const unique = [...new Set(paths.filter(Boolean))];
+    const unique = [...new Set([...paths.filter(Boolean), ...compositeSources])];
     this.gridSize = Math.ceil(Math.sqrt(unique.length));
     unique.forEach((path, i) => {
       this.grid.set(path, { col: i % this.gridSize, row: Math.floor(i / this.gridSize) });
@@ -63,23 +82,20 @@ export class TextureAtlas {
     this.canvas.height = canvasSize;
     const ctx = this.canvas.getContext('2d')!;
 
+    // Cache loaded images so composites can reference them later
+    const imageCache = new Map<string, HTMLImageElement>();
     let loaded = 0;
     const total = unique.length;
 
     if (total === 0) {
-      this.texture = new THREE.CanvasTexture(this.canvas);
-      this.texture.magFilter = THREE.NearestFilter;
-      this.texture.minFilter = THREE.NearestFilter;
-      this.texture.generateMipmaps = false;
-      this.texture.colorSpace = THREE.SRGBColorSpace;
-      this.ready = true;
-      onLoad();
+      this.finalize(onLoad);
       return;
     }
 
     for (const path of unique) {
       const pos = this.grid.get(path)!;
       const img = new Image();
+      imageCache.set(path, img);
       img.onload = () => {
         const sx = pos.col * this.tilePx;
         const sy = pos.row * this.tilePx;
@@ -91,30 +107,63 @@ export class TextureAtlas {
         }
 
         loaded++;
-        if (loaded === total) {
-          this.texture = new THREE.CanvasTexture(this.canvas!);
-          this.texture.magFilter = THREE.NearestFilter;
-          this.texture.minFilter = THREE.NearestFilter;
-          this.texture.generateMipmaps = false;
-          this.texture.colorSpace = THREE.SRGBColorSpace;
-          this.ready = true;
-          onLoad();
-        }
+        if (loaded === total) this.buildCompositesAndFinish(ctx, onLoad, composites, imageCache, tints);
       };
       img.onerror = () => {
         loaded++;
-        if (loaded === total) {
-          this.texture = new THREE.CanvasTexture(this.canvas!);
-          this.texture.magFilter = THREE.NearestFilter;
-          this.texture.minFilter = THREE.NearestFilter;
-          this.texture.generateMipmaps = false;
-          this.texture.colorSpace = THREE.SRGBColorSpace;
-          this.ready = true;
-          onLoad();
-        }
+        if (loaded === total) this.buildCompositesAndFinish(ctx, onLoad, composites, imageCache, tints);
       };
       img.src = path;
     }
+  }
+
+  /** After all source images are drawn, build composite cells and finalise. */
+  private buildCompositesAndFinish(
+    ctx: CanvasRenderingContext2D,
+    onLoad: () => void,
+    composites: Map<string, CompositeDef> | undefined,
+    imageCache: Map<string, HTMLImageElement>,
+    tints: Map<string, string> | undefined,
+  ): void {
+    if (composites) {
+      for (const [compositePath, def] of composites) {
+        const pos = this.grid.get(compositePath);
+        if (!pos) continue; // composite path wasn't in the original paths set
+        const sx = pos.col * this.tilePx;
+        const sy = pos.row * this.tilePx;
+        const baseImg = imageCache.get(def.base);
+        const overlayImg = imageCache.get(def.overlay);
+        if (!baseImg || !overlayImg) continue;
+
+        // 1. Draw base (e.g. dirt) — no tint
+        ctx.drawImage(baseImg, sx, sy, this.tilePx, this.tilePx);
+
+        // 2. Draw overlay (e.g. grass tufts) — with tint if specified
+        const overlayTint = tints?.get(def.overlay);
+        ctx.drawImage(overlayImg, sx, sy, this.tilePx, this.tilePx);
+        if (overlayTint) {
+          // The overlay was drawn on top of the base.  Apply tint using
+          // the overlay's alpha as a mask so only the tufts are tinted,
+          // leaving the dirt base showing through transparent areas.
+          TextureAtlas.applyTint(ctx, overlayImg, sx, sy, this.tilePx, overlayTint);
+        }
+
+        // 3. Register the composite cell's UVs for the virtual path.
+        //    Already done via the paths → grid setup in build().
+      }
+    }
+
+    this.finalize(onLoad);
+  }
+
+  private finalize(onLoad: () => void): void {
+    this.texture = new THREE.CanvasTexture(this.canvas!);
+    this.texture.magFilter = THREE.NearestFilter;
+    this.texture.minFilter = THREE.NearestFilter;
+    this.texture.generateMipmaps = false;
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.ready = true;
+    onLoad();
   }
 
   isReady(): boolean {

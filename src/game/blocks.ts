@@ -1,3 +1,15 @@
+// Virtual path for the pre-composited grass side (dirt + tinted overlay).
+// Built by the texture atlas at startup; not a real file on disk.
+export const COMPOSITE_GRASS_SIDE = '__composite/grass_side';
+
+/** Atlas compositing definitions: virtual path → {base, overlay}. */
+export const BLOCK_COMPOSITES: Record<string, { base: string; overlay: string }> = {
+  [COMPOSITE_GRASS_SIDE]: {
+    base: '/assets/textures/block/dirt.png',
+    overlay: '/assets/textures/block/grass_block_side_overlay.png',
+  },
+};
+
 export enum BlockType {
   AIR = 0,
   DIRT = 1,
@@ -40,7 +52,7 @@ export interface BlockData {
 export const BLOCK_DATA: Record<number, BlockData> = {
   [BlockType.AIR]:         { name: 'Air',          solid: false, transparent: true,  hardness: 0,  texture: '' },
   [BlockType.DIRT]:        { name: 'Dirt',         solid: true,  transparent: false, hardness: 1,  texture: '/assets/textures/block/dirt.png' },
-  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, needsBiomeTint: true, hardness: 1,  texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: '/assets/textures/block/dirt.png', sideOverlay: '/assets/textures/block/grass_block_side_overlay.png' } },
+  [BlockType.GRASS]:       { name: 'Grass',        solid: true,  transparent: false, needsBiomeTint: true, hardness: 1,  texture: '/assets/textures/block/grass_block_top.png', faceTextures: { top: '/assets/textures/block/grass_block_top.png', bottom: '/assets/textures/block/dirt.png', side: COMPOSITE_GRASS_SIDE, sideOverlay: '/assets/textures/block/grass_block_side_overlay.png' } },
   [BlockType.STONE]:       { name: 'Stone',        solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/stone.png' },
   [BlockType.COBBLESTONE]: { name: 'Cobblestone',  solid: true,  transparent: false, hardness: 4,  texture: '/assets/textures/block/cobblestone.png' },
   [BlockType.OAK_PLANKS]:  { name: 'Oak Planks',   solid: true,  transparent: false, hardness: 3,  texture: '/assets/textures/block/oak_planks.png' },

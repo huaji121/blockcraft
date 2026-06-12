@@ -269,11 +269,14 @@ export class Chunk {
             const uvRect = atlas.getUV(texPath);
             if (!uvRect) continue;
 
-            // ── Per-face override: grass top → biome-tinted arrays ──
+            // ── Per-face override: grass top & side → biome-tinted arrays ──
+            // The side face uses a pre-composited texture (dirt + tinted overlay)
+            // built once at atlas creation time — no separate overlay face needed.
             let fPositions = positions, fNormals = normals, fUvs = uvs, fIndices = indices;
             let fColors = colors, fTint = biomeTint;
-            if (data.needsBiomeTint && face.dir[1] === 1) {
-              // Top face of biome-tinted block — needs vertex colour
+            if (data.needsBiomeTint && face.dir[1] >= 0) {
+              // Top (y=1) and side (y=0) faces — needs vertex colour for biome
+              // Bottom (y=-1) stays in regular opaque (dirt, no vertex colour)
               fPositions = biomeOpaquePos; fNormals = biomeOpaqueNorm;
               fUvs = biomeOpaqueUv; fIndices = biomeOpaqueIdx;
               fColors = biomeOpaqueColor;
@@ -309,38 +312,6 @@ export class Chunk {
               baseIndex, baseIndex + 2, baseIndex + 3
             );
 
-            // ── Side overlay (e.g. grass tufts on dirt) ──
-            // Emit a second face with the overlay texture, slightly offset
-            // in the normal direction to composit on top of the base face.
-            const sideOverlayPath = data.faceTextures?.sideOverlay;
-            if (sideOverlayPath && face.dir[1] === 0) {
-              const ovUV = atlas.getUV(sideOverlayPath);
-              if (ovUV) {
-                const ovBase = biomeOpaquePos.length / 3;
-                for (let i = 0; i < 4; i++) {
-                  const corner = face.corners[i];
-                  biomeOpaquePos.push(
-                    (x + corner[0]) * BLOCK_SIZE + face.dir[0] * 0.001,
-                    (y + corner[1]) * BLOCK_SIZE + face.dir[1] * 0.001,
-                    (z + corner[2]) * BLOCK_SIZE + face.dir[2] * 0.001,
-                  );
-                  biomeOpaqueNorm.push(face.dir[0], face.dir[1], face.dir[2]);
-                  biomeOpaqueUv.push(
-                    ovUV.u0 + fuvs[i][0] * (ovUV.u1 - ovUV.u0),
-                    ovUV.v0 + fuvs[i][1] * (ovUV.v1 - ovUV.v0),
-                  );
-                  biomeOpaqueColor.push(
-                    biomeTint ? biomeTint[0] : 1,
-                    biomeTint ? biomeTint[1] : 1,
-                    biomeTint ? biomeTint[2] : 1,
-                  );
-                }
-                biomeOpaqueIdx.push(
-                  ovBase, ovBase + 1, ovBase + 2,
-                  ovBase, ovBase + 2, ovBase + 3,
-                );
-              }
-            }
           }
         }
       }
