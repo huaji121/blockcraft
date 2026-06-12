@@ -19,7 +19,6 @@ export class Chunk {
   static biomeOpaqueMaterial: THREE.MeshLambertMaterial;
   static transparentMaterial: THREE.MeshLambertMaterial;
   static alphaTestMaterial: THREE.MeshLambertMaterial;
-  static overlayMaterial: THREE.MeshLambertMaterial;
 
   static initMaterials(atlas: TextureAtlas): void {
     const tex = atlas.getTexture();
@@ -56,20 +55,6 @@ export class Chunk {
       opacity: 0.5,
       alphaTest: 0.1,
       depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
-    });
-    // Overlay: for compositing a textured overlay on top of a base face
-    // (e.g. grass side = dirt base + tinted grass overlay).
-    // Polygon offset pushes the overlay slightly forward to avoid z-fighting
-    // with the base face rendered at the exact same position.
-    Chunk.overlayMaterial = new THREE.MeshLambertMaterial({
-      map: tex,
-      side: THREE.FrontSide,
-      transparent: false,
-      alphaTest: 0.1,
-      vertexColors: true,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
@@ -214,11 +199,6 @@ export class Chunk {
     const semiTransUv: number[] = [];
     const semiTransIdx: number[] = [];
     const cutoutColor: number[] = [];
-    const overlayPos: number[] = [];
-    const overlayNorm: number[] = [];
-    const overlayUv: number[] = [];
-    const overlayIdx: number[] = [];
-    const overlayColor: number[] = [];
 
     const worldX0 = this.cx * CHUNK_SIZE;
     const worldY0 = this.cy * CHUNK_SIZE;
@@ -336,26 +316,26 @@ export class Chunk {
             if (sideOverlayPath && face.dir[1] === 0) {
               const ovUV = atlas.getUV(sideOverlayPath);
               if (ovUV) {
-                const ovBase = overlayPos.length / 3;
+                const ovBase = biomeOpaquePos.length / 3;
                 for (let i = 0; i < 4; i++) {
                   const corner = face.corners[i];
-                  overlayPos.push(
+                  biomeOpaquePos.push(
                     (x + corner[0]) * BLOCK_SIZE + face.dir[0] * 0.001,
                     (y + corner[1]) * BLOCK_SIZE + face.dir[1] * 0.001,
                     (z + corner[2]) * BLOCK_SIZE + face.dir[2] * 0.001,
                   );
-                  overlayNorm.push(face.dir[0], face.dir[1], face.dir[2]);
-                  overlayUv.push(
+                  biomeOpaqueNorm.push(face.dir[0], face.dir[1], face.dir[2]);
+                  biomeOpaqueUv.push(
                     ovUV.u0 + fuvs[i][0] * (ovUV.u1 - ovUV.u0),
                     ovUV.v0 + fuvs[i][1] * (ovUV.v1 - ovUV.v0),
                   );
-                  overlayColor.push(
+                  biomeOpaqueColor.push(
                     biomeTint ? biomeTint[0] : 1,
                     biomeTint ? biomeTint[1] : 1,
                     biomeTint ? biomeTint[2] : 1,
                   );
                 }
-                overlayIdx.push(
+                biomeOpaqueIdx.push(
                   ovBase, ovBase + 1, ovBase + 2,
                   ovBase, ovBase + 2, ovBase + 3,
                 );
@@ -367,14 +347,12 @@ export class Chunk {
     }
 
     this.buildGroup(opaquePos, opaqueNorm, opaqueUv, opaqueIdx, atlas, Chunk.opaqueMaterial, 0);
-    // Biome-tinted opaque (grass faces) — vertex-coloured per biome
+    // Biome-tinted opaque (grass top, side overlay) — vertex-coloured per biome
     this.buildGroup(biomeOpaquePos, biomeOpaqueNorm, biomeOpaqueUv, biomeOpaqueIdx, atlas, Chunk.biomeOpaqueMaterial, 1, biomeOpaqueColor);
-    // Overlay: grass side tufts — polygon-offset to composit on top of the base face
-    this.buildGroup(overlayPos, overlayNorm, overlayUv, overlayIdx, atlas, Chunk.overlayMaterial, 2, overlayColor);
     // Cutout after opaque so depth buffer is populated (solid leaf pixels occlude)
-    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 3, cutoutColor);
+    this.buildGroup(cutoutPos, cutoutNorm, cutoutUv, cutoutIdx, atlas, Chunk.alphaTestMaterial, 2, cutoutColor);
     // Semi-transparent last — no depth write, must render after everything else
-    this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 4);
+    this.buildGroup(semiTransPos, semiTransNorm, semiTransUv, semiTransIdx, atlas, Chunk.transparentMaterial, 3);
     this.dirty = false;
   }
 
