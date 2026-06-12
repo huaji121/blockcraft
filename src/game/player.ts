@@ -32,7 +32,6 @@ export class Player extends Entity {
   // Held-item hand mesh
   private handMesh: THREE.Mesh;
   private lastHandItemId: number = EMPTY_ITEM_ID;
-  private handBobPhase: number = 0;
   private handSwayX: number = 0;
   private handSwayY: number = 0;
 
@@ -650,25 +649,25 @@ export class Player extends Entity {
       this.lastHandItemId = itemId;
     }
 
-    // Mouse sway
+    // Mouse sway — smoothed
     const targetSwayX = -this.rawDeltaX * 0.02;
     const targetSwayY = this.rawDeltaY * 0.02;
     this.handSwayX += (targetSwayX - this.handSwayX) * Math.min(1, dt * 12);
     this.handSwayY += (targetSwayY - this.handSwayY) * Math.min(1, dt * 12);
 
-    // Walk bob
-    const hSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
-    if (this.isGrounded && hSpeed > 0.5) {
-      this.handBobPhase += hSpeed * 8 * dt;
-    }
-    const bobY = Math.sin(this.handBobPhase) * 0.03;
-    const bobX = Math.cos(this.handBobPhase * 2) * 0.015;
+    // Walk bob — synchronised with camera bob phase, ramped with bobAmplitude
+    const bobAmp = this.bobAmplitude;
+    const bobY = Math.sin(this.bobPhase) * 0.02 * bobAmp;
+    const bobX = Math.cos(this.bobPhase * 2) * 0.01 * bobAmp;
 
-    this.handMesh.position.set(
-      0.42 + this.handSwayX + bobX,
-      -0.32 + this.handSwayY + bobY,
-      -0.7,
-    );
+    // Smooth interpolation to target position — eliminates jitter
+    const targetX = 0.42 + this.handSwayX + bobX;
+    const targetY = -0.32 + this.handSwayY + bobY;
+    const smooth = 1 - Math.exp(-15 * dt);
+    this.handMesh.position.x += (targetX - this.handMesh.position.x) * smooth;
+    this.handMesh.position.y += (targetY - this.handMesh.position.y) * smooth;
+    this.handMesh.position.z += (-0.7 - this.handMesh.position.z) * smooth;
+
     this.handMesh.rotation.set(0.3, -0.5, 0.1);
   }
 
