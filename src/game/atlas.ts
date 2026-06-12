@@ -232,4 +232,55 @@ export class TextureAtlas {
 
     return tex;
   }
+
+  /** Create a standalone composite texture (e.g. dirt + tinted grass overlay).
+   *  Returns a CanvasTexture immediately; loads both images asynchronously
+   *  and draws base first, then tinted overlay on top, updating when ready. */
+  static createCompositeTexture(
+    basePath: string, overlayPath: string, overlayTint: string | undefined,
+  ): THREE.CanvasTexture {
+    const SIZE = 16;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d')!;
+
+    // Fallback: fill with a neutral mid-tone so the mesh isn't black while loading
+    ctx.fillStyle = overlayTint ?? '#999999';
+    ctx.fillRect(0, 0, SIZE, SIZE);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+
+    let loaded = 0;
+    const imgs: [HTMLImageElement, HTMLImageElement] = [new Image(), new Image()];
+
+    const tryDraw = () => {
+      if (loaded < 2) return;
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      ctx.globalCompositeOperation = 'source-over';
+      // Draw base (no tint)
+      ctx.drawImage(imgs[0], 0, 0, SIZE, SIZE);
+      // Draw overlay on top
+      ctx.drawImage(imgs[1], 0, 0, SIZE, SIZE);
+      // Tint the overlay using its alpha as mask
+      if (overlayTint) {
+        TextureAtlas.applyTint(ctx, imgs[1], 0, 0, SIZE, overlayTint);
+      }
+      tex.needsUpdate = true;
+    };
+
+    imgs[0].onload = () => { loaded++; tryDraw(); };
+    imgs[0].onerror = () => { loaded++; tryDraw(); };
+    imgs[1].onload = () => { loaded++; tryDraw(); };
+    imgs[1].onerror = () => { loaded++; tryDraw(); };
+
+    imgs[0].src = basePath;
+    imgs[1].src = overlayPath;
+
+    return tex;
+  }
 }

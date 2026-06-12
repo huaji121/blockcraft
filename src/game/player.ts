@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { Entity } from './entities';
 import { World } from './world';
-import { BlockType, BLOCK_DATA } from './blocks';
+import { BlockType, BLOCK_DATA, BLOCK_TEXTURE_TINTS } from './blocks';
 import { EntityManager } from './entities';
 import { ITEM_REGISTRY, EMPTY_ITEM_ID, type InteractContext } from './items';
+import { TextureAtlas } from './atlas';
 import { DEFAULT_KEYBINDS } from './keybinds';
 import {
   JUMP_SPEED, PLAYER_SPEED,
@@ -27,6 +28,14 @@ export class Player extends Entity {
   private bobAmplitude: number = 0;
   private readonly BOB_SPEED = 4;
   private readonly BOB_AMPLITUDE = 0.06;
+
+  // Held-item hand mesh
+  private handMesh: THREE.Mesh;
+  private lastHandItemId: number = EMPTY_ITEM_ID;
+  private handBobPhase: number = 0;
+  private handSwayX: number = 0;
+  private handSwayY: number = 0;
+
   private world: World;
   private isPointerLocked: boolean = false;
 
@@ -113,6 +122,16 @@ export class Player extends Entity {
       new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 })
     );
     this.highlightMesh.visible = false;
+
+      // ── Held-item hand mesh (child of camera) ──
+    this.handMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.3, 0.3),
+      Array.from({ length: 6 }, () => new THREE.MeshLambertMaterial({ color: 0xffffff })),
+    );
+    this.handMesh.visible = false;
+    this.camera.add(this.handMesh);
+    // Camera must be in the scene graph for its children (hand mesh) to render
+    this.scene.add(this.camera);
 
     // Destroy stage overlay (slightly larger than a block, renders on top)
     const loader = new THREE.TextureLoader();
@@ -463,6 +482,9 @@ export class Player extends Entity {
       this.camera.lookAt(headPos);
     }
 
+    // ── Held-item hand mesh ──
+    this.updateHandMesh(dt);
+
     if (!this.uiOpen) {
       this.updateHighlight();
       this.handleBlockInteraction(dt);
@@ -608,5 +630,95 @@ export class Player extends Entity {
         this.lastPlaceTime = now;
       }
     }
+  }
+
+  // ── Held-item hand mesh ──
+
+  private updateHandMesh(dt: number): void {
+    const itemId = this.getSelectedItemId();
+
+    if (this.perspective !== 0 || itemId === EMPTY_ITEM_ID) {
+      this.handMesh.visible = false;
+      return;
+    }
+    this.handMesh.visible = true;
+
+    // Update textures when selected item changes
+    if (itemId !== this.lastHandItemId) {
+      this.rebuildHandMaterials(itemId);
+      this.lastHandItemId = itemId;
+    }
+
+    // Mouse sway
+    const targetSwayX = -this.rawDeltaX * 0.02;
+    const targetSwayY = this.rawDeltaY * 0.02;
+    this.handSwayX += (targetSwayX - this.handSwayX) * Math.min(1, dt * 12);
+    this.handSwayY += (targetSwayY - this.handSwayY) * Math.min(1, dt * 12);
+
+    // Walk bob
+    const hSpeed = Math.sqrt(this.velocity.x ** 2 + this.velocity.z ** 2);
+    if (this.isGrounded && hSpeed > 0.5) {
+      this.handBobPhase += hSpeed * 8 * dt;
+    }
+    const bobY = Math.sin(this.handBobPhase) * 0.03;
+    const bobX = Math.cos(this.handBobPhase * 2) * 0.015;
+
+    this.handMesh.position.set(
+      0.42 + this.handSwayX + bobX,
+      -0.32 + this.handSwayY + bobY,
+      -0.7,
+    );
+    this.handMesh.rotation.set(0.3, -0.5, 0.1);
+  }
+
+  private rebuildHandMaterials(itemId: number): void {
+    const item = ITEM_REGISTRY.getById(itemId);
+    if (!item) return;
+
+    const blockType = item.getBlockType();
+    const isTransparent = blockType != null && BLOCK_DATA[blockType].transparent;
+    const sideOverlay = item.getSideOverlay();
+
+    const top = item.getFaceTexture('top');
+    const bottom = item.getFaceTexture('bottom');
+    const side = item.getFaceTexture('side');
+
+    const matTex = (path: string): THREE.Texture | null => {
+      const tex = this.world.getTexture(path);
+      if (tex) return tex;
+      const tint = BLOCK_TEXTURE_TINTS[path];
+      if (tint) return TextureAtlas.createTintedTexture(path, tint);
+      return null;
+    };
+
+    // For grass: composite the side overlay onto the dirt base
+    let sideMap: THREE.Texture | null = matTex(side);
+    if (sideOverlay) {
+      const overlayTint = BLOCK_TEXTURE_TINTS[sideOverlay];
+      sideMap = TextureAtlas.createCompositeTexture(
+        side, sideOverlay, overlayTint,
+      );
+    }
+
+    const matOpts = isTransparent ? {
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    } : {};
+
+    const disposeOld = this.handMesh.material;
+    if (Array.isArray(disposeOld)) {
+      disposeOld.forEach((m: THREE.Material) => m.dispose());
+    }
+
+    const makeMat = (map: THREE.Texture | null) =>
+      new THREE.MeshLambertMaterial({ map, color: 0xffffff, ...matOpts });
+
+    this.handMesh.material = [
+      makeMat(sideMap), makeMat(sideMap),   // +X, -X
+      makeMat(matTex(top)),                 // +Y
+      makeMat(matTex(bottom)),              // -Y
+      makeMat(sideMap), makeMat(sideMap),   // +Z, -Z
+    ];
   }
 }
