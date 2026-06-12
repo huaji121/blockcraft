@@ -74,7 +74,12 @@ export class World {
 
   setRenderDistance(distance: number): void { this.renderDistance = distance; }
   setChunksPerFrame(count: number): void { this.chunksPerFrame = count; }
-  getTexture(path: string): THREE.Texture | null { return this.individualTextures.get(path) ?? null; }
+  getTexture(path: string): THREE.Texture | null {
+    // Composite paths (e.g. __composite/grass_side) exist only in the atlas —
+    // resolve to the base texture for standalone use (particles, etc.).
+    const resolved = BLOCK_COMPOSITES[path]?.base ?? path;
+    return this.individualTextures.get(resolved) ?? null;
+  }
 
   /** Get the biome at a world (x, z) column. */
   getBiomeAt(wx: number, wz: number): BiomeType {
